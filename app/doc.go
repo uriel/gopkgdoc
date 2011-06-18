@@ -1,3 +1,17 @@
+// Copyright 2011 Gary Burd
+//
+// Licensed under the Apache License, Version 2.0 (the "License"): you may
+// not use this file except in compliance with the License. You may obtain
+// a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+// License for the specific language governing permissions and limitations
+// under the License.
+
 package app
 
 import (
@@ -31,7 +45,7 @@ type file struct {
 
 func sprintNode(fset *token.FileSet, decl interface{}) string {
 	var buf bytes.Buffer
-	_, err := (&printer.Config{Mode: printer.UseSpaces}).Fprint(&buf, fset, decl)
+	_, err := (&printer.Config{Mode: printer.UseSpaces, Tabwidth: 4}).Fprint(&buf, fset, decl)
 	if err != nil {
 		buf.Reset()
 		buf.WriteString(err.String())
@@ -44,7 +58,7 @@ func sprintURL(fset *token.FileSet, srcURLFmt string, pos token.Pos) string {
 	return fmt.Sprintf(srcURLFmt, position.Filename, position.Line)
 }
 
-func valueDocs(fset *token.FileSet, srcURLFmt string, values []*doc.ValueDoc) interface{} {
+func valueDocs(fset *token.FileSet, srcURLFmt string, values []*doc.ValueDoc) []map[string]interface{} {
 	var result []map[string]interface{}
 	for _, d := range values {
 		result = append(result, map[string]interface{}{
@@ -56,7 +70,7 @@ func valueDocs(fset *token.FileSet, srcURLFmt string, values []*doc.ValueDoc) in
 	return result
 }
 
-func funcDocs(fset *token.FileSet, srcURLFmt string, funcs []*doc.FuncDoc) interface{} {
+func funcDocs(fset *token.FileSet, srcURLFmt string, funcs []*doc.FuncDoc) []map[string]interface{} {
 	var result []map[string]interface{}
 	for _, d := range funcs {
 		recv := ""
@@ -130,13 +144,24 @@ func createPackageDoc(importpath string, fileURLFmt string, srcURLFmt string, pr
 		})
 	}
 
+	funcs := funcDocs(fset, srcURLFmt, pdoc.Funcs)
+	consts := valueDocs(fset, srcURLFmt, pdoc.Consts)
+	vars := valueDocs(fset, srcURLFmt, pdoc.Vars)
+
+	if len(types) == 0 &&
+		len(funcs) == 0 &&
+		len(consts) == 0 &&
+		len(vars) == 0 {
+		return nil, errPackageNotFound
+	}
+
 	m := map[string]interface{}{
 		"doc":    pdoc.Doc,
 		"files":  fileNames,
 		"types":  types,
-		"funcs":  funcDocs(fset, srcURLFmt, pdoc.Funcs),
-		"consts": valueDocs(fset, srcURLFmt, pdoc.Consts),
-		"vars":   valueDocs(fset, srcURLFmt, pdoc.Vars),
+		"funcs":  funcs,
+		"consts": consts,
+		"vars":   vars,
 	}
 	data, err := json.Marshal(m)
 	if err != nil {

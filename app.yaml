@@ -1,20 +1,24 @@
 application: gopkgdoc
 version: 1
 runtime: go
-api_version: 1
+api_version: 3
 
 handlers:
+
+- url: /google3d2f3cd4cc2bb44b\.html
+  static_files: static/google3d2f3cd4cc2bb44b.html
+  upload: static/google3d2f3cd4cc2bb44b.html
 
 - url: /robots\.txt
   static_files: static/robots.txt
   upload: static/robots.txt
 
+- url: /favicon\.ico
+  static_files: static/favicon.ico
+  upload: static/favicon.ico
+
 - url: /static
   static_dir: static
-
-- url: /admin/.*
-  login: admin
-  script: _go_app
 
 - url: /.*
   script: _go_app

@@ -1,73 +1,84 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>{projectName}: {packageName}</title>
-<link rel="stylesheet" href="/static/base.css" type="text/css"/> 
+<title>{{.projectName|html}}: {{.packageName|html}}</title>
+<link rel="stylesheet" href="/static/base.css?v=1" type="text/css"/> 
 </head>
 <body>
-<div id="content"> 
-<h1><a href="{projectURL}">{projectName}</a>: package {packageName}</h1>
+<div id="header">
+    <div class="content">
+        <h1><a href="{{.userURL|html}}">{{.userName|html}}</a> / <strong><a href="{{.projectURL|html}}">{{.projectName|html}}</a></strong></h1>
+    </div>
+</div>
+
+<div class="content"> 
+<h1>package {{.packageName|html}}</h1>
 
 <h4>Table Of Contents</h4>
+<div style="-webkit-column-count: 2; -moz-column-count: 2; column-count: 2">
 <ul>
 <li><a href="#package">Package</a>
-{.section consts}<li><a href="#constants">Constants</a>{.end}
-{.section vars}<li><a href="#variables">Variables</a>{.end}
-{.repeated section funcs}<li><a href="#{name}">func {name}</a>{.end}
-{.repeated section types}
-<li><a href="#{name}">type {name}</a>
-    {.section factories}<ul>{.or}{.section methods}<ul>{.end}{.end}
-    {.repeated section factories}<li><a href="#{name}">func {name}</a>{.end}
-    {.repeated section methods}<li><a href="#{recv}.{name}">func ({recv}) {name}</a>{.end}
-    {.section factories}</ul>{.or}{.section methods}</ul>{.end}{.end}
-{.end}
+{{if .consts}}<li><a href="#constants">Constants</a>{{end}}
+{{if .vars}}<li><a href="#variables">Variables</a>{{end}}
+{{range .funcs}}<li><a href="#{name}">func {{.name|html}}</a>{{end}}
+{{range .types}}
+<li><a href="#{{.name|html}}">type {{.name|html}}</a>
+    {{if or .factories .methods}}<ul>{{end}}
+    {{range .factories}}<li><a href="#{{.name|html}}">func {{.name|html}}</a>{{end}}
+    {{range .methods}}<li><a href="#{{.recv|html}}.{{.name|html}}">func ({{.recv|html}}) {{.name|html}}</a>{{end}}
+    {{if or .factories .methods}}</ul>{{end}}
+{{end}}
 </ul>
+</div> 
 
 <h2 id="package">Package</h2>
 
-<p><code>import "{importPath}"</code></p>
+<p><code>import "{{.importPath|html}}"</code></p>
 
-{doc|comment}
+{{.doc|comment}}
 
-<h4>Package Files</h2>
-<p>{.repeated section files}<a href="{url}">{name}</a> {.end}</p>
+<h4>Package Files</h4>
+<p>{{range .files}}<a href="{{.url|html}}">{{.name|html}}</a> {{end}}</p>
 
-{.section consts}
+{{if .consts}}
 <h2 id="constants">Constants</h2>
-{.repeated section @}{doc|comment}<pre>{decl}</pre>{.end}
-{.end}
+{{range .consts}}{{.doc|comment}}<pre>{{.decl|html}}</pre>{{end}}
+{{end}}
 
-{.section vars}
+{{if .vars}}
 <h2 id="variables">Variables</h2>
-{.repeated section @}{doc|comment}<pre>{decl}</pre>{.end}
-{.end}
+{{range .vars}}{{.doc|comment}}<pre>{{.decl|html}}</pre>{{end}}
+{{end}}
 
-{.repeated section funcs}
-<h2 id="{name}">func <a href="{url}">{name}</a></h2>
-<p><code>{decl}</code></p>
-{doc|comment}
-{.end}
+{{range .funcs}}
+<h2 id="{{.name|html}}">func <a href="{{.url|html}}">{{.name|html}}</a></h2>
+<p><code>{{.decl|html}}</code></p>
+{{.doc|comment}}
+{{end}}
 
-{.repeated section types}
-<h2 id="{name}">type <a href="{url}">{name}</a></h2>
-{doc|comment}
-<pre>{decl}</pre>
+{{range .types}}
+<h2 id="{{.name|html}}">type <a href="{{.url|html}}">{{.name|html}}</a></h2>
+{{.doc|comment}}
+<pre>{{.decl|html}}</pre>
 
-    {.repeated section factories}
-    <h3 id="{name}">func <a href="{url}">{name}</a></h3>
-    <p><code>{decl}</code></p>
-    {doc|comment}
-    {.end}
+    {{range .factories}}
+    <h3 id="{{.name|html}}">func <a href="{{.url|html}}">{{.name|html}}</a></h3>
+    <p><code>{{.decl|html}}</code></p>
+    {{.doc|comment}}
+    {{end}}
 
-    {.repeated section methods}
-    <h3 id="{recv}.{name}">func ({recv}) <a href="{url}">{name}</a></h3>
-    <p><code>{decl}</code></p>
-    {doc|comment}
-    {.end}
+    {{range .methods}}
+    <h3 id="{{.recv|html}}.{{.name|html}}">func ({{.recv|html}}) <a href="{{.url|html}}">{{.name|html}}</a></h3>
+    <p><code>{{.decl|html}}</code></p>
+    {{.doc|comment}}
+    {{end}}
 
-{.end}
-<hr>
-Generated on {updated} from the <a href="{projectURL}">{projectName} source code</a>.
+{{end}}
+</div>
+<div id="footer">
+<div class="content">
+<a href="/">GoPkgDoc</a> generated this page from the <a href="{{.projectURL|html}}">{{.projectName|html}} source code</a> at {{.updated|html}}.
+</div>
 </div>
 </body>
 </html>

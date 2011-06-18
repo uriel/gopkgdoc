@@ -2,29 +2,32 @@
 <html>
 <head>
 <title>Packages</title>
-<link rel="stylesheet" href="/static/base.css" type="text/css"/> 
+<link rel="stylesheet" href="/static/base.css?v=1" type="text/css"/> 
 </head>
 <body>
-<div id="content"> 
-<h1>Packages</h1>
+<div id="header"><div class="content"><h1>GoPkgDoc</h1></div></div>
+<div class="content">
+<h1>Package Documentation</h1>
+<hr>
 <ul>
-{.repeated section @}
-<li><a href="/pkg/{StringID}">{StringID}</a>
-{.end}
+{{range .}}
+<li><a href="/pkg/{{.|html}}">{{.|html}}</a>
+{{end}}
 </ul>
 <hr>
-<p name="info">To add your Github hosted project to this site, add 
-http://gopkgdoc.appspot.com/hook/github to the 
-<a href="http://help.github.com/post-receive-hooks/">post-receive hooks</a> for your project.
-Click "Test Hook" to initiate the first update.
-
-<p>Contact <a href="https://github.com/inbox/new/garyburd">Gary Burd</a> if you
-have questions or comments about this site. File an <a
-href="https://github.com/garyburd/pkgdocsrv/issues/new">issue</a> to report
-bugs or suggest improvements. The <a href="https://github.com/garyburd/pkgdocsrv">source</a> 
-for this site is hosted on Github.  <a
-href="http://help.github.com/send-pull-requests/">Pull requests</a> are
-welcomed.
+<a name="info"></a>
+<p>This site automagically publishes <a
+href="http://golang.org/">Go</a> package documentation for <a
+href="http://github.com/">Github</a> hosted projects. To add your project to
+this site, add http://gopkgdoc.appspot.com/hook/github to the <a
+href="http://help.github.com/post-receive-hooks/">post-receive hooks</a> for
+your project. After adding the hook, click "Post-Receive URLs" and "Test Hook"
+to initiate the first update to this site. 
+<p>File an <a href="https://github.com/garyburd/pkgdocsrv/issues/new">issue</a>
+to report bugs or suggest improvements. The <a
+href="https://github.com/garyburd/pkgdocsrv">source</a> for this site is hosted
+on Github.  <a href="http://help.github.com/send-pull-requests/">Pull
+requests</a> are welcomed.
 </div>
 </body>
 </html>
