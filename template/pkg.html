@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>{projectName}: {packageName}</title>
+<link rel="stylesheet" href="/static/base.css" type="text/css"/> 
+</head>
+<body>
+<div id="content"> 
+<h1><a href="{projectURL}">{projectName}</a>: package {packageName}</h1>
+
+<h4>Table Of Contents</h4>
+<ul>
+<li><a href="#package">Package</a>
+{.section consts}<li><a href="#constants">Constants</a>{.end}
+{.section vars}<li><a href="#variables">Variables</a>{.end}
+{.repeated section funcs}<li><a href="#{name}">func {name}</a>{.end}
+{.repeated section types}
+<li><a href="#{name}">type {name}</a>
+    {.section factories}<ul>{.or}{.section methods}<ul>{.end}{.end}
+    {.repeated section factories}<li><a href="#{name}">func {name}</a>{.end}
+    {.repeated section methods}<li><a href="#{recv}.{name}">func ({recv}) {name}</a>{.end}
+    {.section factories}</ul>{.or}{.section methods}</ul>{.end}{.end}
+{.end}
+</ul>
+
+<h2 id="package">Package</h2>
+
+<p><code>import "{importPath}"</code></p>
+
+{doc|comment}
+
+<h4>Package Files</h2>
+<p>{.repeated section files}<a href="{url}">{name}</a> {.end}</p>
+
+{.section consts}
+<h2 id="constants">Constants</h2>
+{.repeated section @}{doc|comment}<pre>{decl}</pre>{.end}
+{.end}
+
+{.section vars}
+<h2 id="variables">Variables</h2>
+{.repeated section @}{doc|comment}<pre>{decl}</pre>{.end}
+{.end}
+
+{.repeated section funcs}
+<h2 id="{name}">func <a href="{url}">{name}</a></h2>
+<p><code>{decl}</code></p>
+{doc|comment}
+{.end}
+
+{.repeated section types}
+<h2 id="{name}">type <a href="{url}">{name}</a></h2>
+{doc|comment}
+<pre>{decl}</pre>
+
+    {.repeated section factories}
+    <h3 id="{name}">func <a href="{url}">{name}</a></h3>
+    <p><code>{decl}</code></p>
+    {doc|comment}
+    {.end}
+
+    {.repeated section methods}
+    <h3 id="{recv}.{name}">func ({recv}) <a href="{url}">{name}</a></h3>
+    <p><code>{decl}</code></p>
+    {doc|comment}
+    {.end}
+
+{.end}
+<hr>
+Generated on {updated} from the <a href="{projectURL}">{projectName} source code</a>.
+</div>
+</body>
+</html>
