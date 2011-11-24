@@ -1,33 +1,56 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<title>Packages</title>
-<link rel="stylesheet" href="/static/base.css?v=1" type="text/css"/> 
+  <meta charset="utf-8">
+  <title>GoPkgDoc</title>
+  <link href="/static/bootstrap.min.css" rel="stylesheet">
+  <style type="text/css">
+      body { padding-top: 30px; }
+      .container { width: 820px; }
+  </style>
 </head>
+
 <body>
-<div id="header"><div class="content"><h1>GoPkgDoc</h1></div></div>
-<div class="content">
-<h1>Package Documentation</h1>
-<hr>
-<ul>
-{{range .}}
-<li><a href="/pkg/{{.|html}}">{{.|html}}</a>
-{{end}}
-</ul>
-<hr>
-<a name="info"></a>
-<p>This site automagically publishes <a
-href="http://golang.org/">Go</a> package documentation for <a
-href="http://github.com/">Github</a> hosted projects. To add your project to
-this site, add http://gopkgdoc.appspot.com/hook/github to the <a
-href="http://help.github.com/post-receive-hooks/">post-receive hooks</a> for
-your project. After adding the hook, click "Post-Receive URLs" and "Test Hook"
-to initiate the first update to this site. 
-<p>File an <a href="https://github.com/garyburd/pkgdocsrv/issues/new">issue</a>
-to report bugs or suggest improvements. The <a
-href="https://github.com/garyburd/pkgdocsrv">source</a> for this site is hosted
-on Github.  <a href="http://help.github.com/send-pull-requests/">Pull
-requests</a> are welcomed.
-</div>
+  <div class="container">
+
+    {{if .importPath}}<div class="alert-message block-message error">
+      <p>Oh snap! Our team of gophers could not find a package with import path "{{.importPath|html}}".  
+      {{if .oneDidYouMean}}
+        Did you mean <a href="/pkg/{{index .didYouMean 0|html}}">{{index .didYouMean 0|html}}</a>?
+      {{else}}{{if .didYouMean}}
+        <p>Did you mean: <ul>{{range .didYouMean}}<li><a href="/pkg/{{.|html}}">{{.|html}}</a>{{end}}</ul><p>
+      {{else}}
+        Check the spelling and try again. 
+      {{end}}{{end}}
+    </div>{{end}}
+
+    <div class="hero-unit">
+      <h1>GoPkgDoc</h1>
+      <p>GoPkgDoc displays documentation for Go packages on Bitbucket, Github, Launchpad and Google Project Hosting.
+      <div class="row">
+        <form class="form-stacked" action="/" method="GET">
+           <div class="clearfix">
+              <div class="input">
+                <input type="text" class="span6" id="q" name="q" value="{{.importPath|html}}" placeholder="Package import path"/>
+                <button type="submit" class="btn primary">Go</button>
+              </div>
+            </div>
+        </form>
+      </div>
+    </div>
+
+    <p>File an <a href="https://github.com/garyburd/pkgdocsrv/issues/new">issue</a> to report bugs or suggest improvements. 
+    The <a href="https://github.com/garyburd/pkgdocsrv">source</a> for this site is hosted on Github.  
+    <a href="http://help.github.com/send-pull-requests/">Pull requests</a> are welcomed.
+
+    <p>The GoPkgDoc bookmarklet navigates from pages on Bitbucket, Github
+    Launchpad and Google Project Hosting to the package documentation. To
+    install the bookmarklet, click and drag the following link to your bookmark
+    bar: 
+    <a href="javascript:window.location='http://{{.Host|html}}/?q='+encodeURIComponent(window.location)">GoPkgDoc</a>
+
+    <p>GoPkgDoc keeps a <a href="/pkg/">list of the packages</a> viewed on this site.
+
+  </div>
 </body>
 </html>

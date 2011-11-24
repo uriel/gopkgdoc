@@ -17,16 +17,113 @@ package app
 import (
 	"appengine"
 	"appengine/datastore"
+	"appengine/memcache"
 	"bytes"
+	"fmt"
 	"go/doc"
-	"path"
 	"http"
-	"io"
-	"json"
 	"os"
+	"path"
+	"regexp"
+	"strings"
 	"template"
 	"time"
+	"url"
 )
+
+type Package struct {
+	ImportPath   string `datastore:"-"`
+	Synopsis     string `datastore:",noindex"`
+	PackageName  string `datastore:",noindex"`
+	IndexTokens  []string
+	RelatedPaths []string
+}
+
+var hosts = []struct {
+	pattern        *regexp.Regexp
+	getDoc         func(appengine.Context, []string) (*packageDoc, os.Error)
+	getIndexTokens func([]string) []string
+}{
+	{gitPattern, getGithubDoc, getGithubIndexTokens},
+	{googlePattern, getGoogleDoc, getGoogleIndexTokens},
+	{bitbucketPattern, getBitbucketDoc, getBitbucketIndexTokens},
+	{launchpadPattern, getLaunchpadDoc, getLaunchpadIndexTokens},
+}
+
+func canonicalizeTokens(tokens []string) []string {
+	for i := range tokens {
+		tokens[i] = strings.ToLower(tokens[i])
+	}
+	return tokens
+}
+
+// getDoc returns the document for the given import path or a list of search
+// tokens for the import path.
+func getDoc(c appengine.Context, importPath string) (*packageDoc, []string, os.Error) {
+	cacheKey := "doc:" + importPath
+
+	// Cached?
+	var doc *packageDoc
+	err := cacheGet(c, cacheKey, &doc)
+	if err == nil {
+		return doc, nil, nil
+	}
+	if err != memcache.ErrCacheMiss {
+		return nil, nil, err
+	}
+
+	for _, h := range hosts {
+		if m := h.pattern.FindStringSubmatch(importPath); m != nil {
+			c.Infof("Reading package %s", importPath)
+			doc, err = h.getDoc(c, m)
+			switch {
+			case err == errPackageNotFound:
+				if err := datastore.Delete(c,
+					datastore.NewKey(c, "Package", importPath, 0, nil)); err != datastore.ErrNoSuchEntity && err != nil {
+					c.Errorf("Delete(%s) -> %v", importPath, err)
+				}
+				return nil, canonicalizeTokens(h.getIndexTokens(m)), nil
+			case err != nil:
+				return nil, nil, err
+			default:
+				if err := cacheSet(c, cacheKey, doc, 3600); err != nil {
+					return nil, nil, err
+				}
+				indexTokens := h.getIndexTokens(m)
+				if doc.PackageName != "main" {
+					indexTokens = append(indexTokens, doc.PackageName)
+				}
+				indexTokens = canonicalizeTokens(indexTokens)
+				if _, err := datastore.Put(c,
+					datastore.NewKey(c, "Package", importPath, 0, nil),
+					&Package{
+						Synopsis:    doc.Synopsis,
+						PackageName: doc.PackageName,
+						IndexTokens: indexTokens,
+					}); err != nil {
+					c.Errorf("Put(%s) -> %v", importPath, err)
+				}
+				return doc, nil, nil
+			}
+		}
+	}
+	return nil, canonicalizeTokens([]string{importPath}), nil
+}
+
+func relativeTime(t int64) string {
+	d := time.Seconds() - t
+	switch {
+	case d < 1:
+		return "just now"
+	case d < 2:
+		return "one second ago"
+	case d < 60:
+		return fmt.Sprintf("%d seconds ago", d)
+	case d < 120:
+		return "one minute ago"
+	}
+	return fmt.Sprintf("%d minutes ago", d/60)
+}
 
 func commentFmt(v string) string {
 	var buf bytes.Buffer
@@ -34,92 +131,224 @@ func commentFmt(v string) string {
 	return buf.String()
 }
 
-var fmap = template.FuncMap{"comment": commentFmt}
+var fmap = template.FuncMap{"comment": commentFmt, "relativeTime": relativeTime}
 
-func parseTemplate(name string) func(io.Writer, interface{}) os.Error {
+func parseTemplate(name string) func(http.ResponseWriter, int, interface{}) os.Error {
 	if appengine.IsDevAppServer() {
-		return func(w io.Writer, value interface{}) os.Error {
-			return template.Must(template.New(name).Funcs(fmap).ParseFile(name)).Execute(w, value)
+		return func(w http.ResponseWriter, status int, value interface{}) os.Error {
+			t, err := template.New(name).Funcs(fmap).ParseFile(name)
+			if err != nil {
+				return err
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(status)
+			return t.Execute(w, value)
 		}
 	}
 	t := template.Must(template.New(name).Funcs(fmap).ParseFile(name))
-	return func(w io.Writer, value interface{}) os.Error {
+	return func(w http.ResponseWriter, status int, value interface{}) os.Error {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(status)
 		return t.Execute(w, value)
 	}
 }
 
 var (
-	homeTemplate = parseTemplate("template/home.html")
-	pkgTemplate  = parseTemplate("template/pkg.html")
+	executeHomeTemplate     = parseTemplate("template/home.html")
+	executePkgTemplate      = parseTemplate("template/pkg.html")
+	executeNotFoundTemplate = parseTemplate("template/notfound.html")
+	executePkgListTemplate  = parseTemplate("template/packageList.html")
 )
 
-func internalError(w http.ResponseWriter, c appengine.Context, err os.Error) {
-	c.Errorf("Error %s", err.String())
-	http.Error(w, "Internal Error", http.StatusInternalServerError)
+type handlerFunc func(http.ResponseWriter, *http.Request) os.Error
+
+func (f handlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	err := f(w, r)
+	if err != nil {
+		appengine.NewContext(r).Errorf("Error %s", err.String())
+		http.Error(w, "Internal Error", http.StatusInternalServerError)
+	}
 }
 
-func servePkg(w http.ResponseWriter, r *http.Request) {
+func servePkg(w http.ResponseWriter, r *http.Request) os.Error {
 	c := appengine.NewContext(r)
-	importPath := r.URL.Path[len("/pkg/"):]
-	if importPath == "" {
-		http.NotFound(w, r)
-		return
+
+	path := path.Clean(r.URL.Path)
+	if path == "/pkg" {
+		return servePackageList(w, r)
 	}
-	key := datastore.NewKey(c, "PackageDoc", importPath, 0, nil)
-	var doc PackageDoc
-	err := datastore.Get(appengine.NewContext(r), key, &doc)
-	if err == datastore.ErrNoSuchEntity {
-		http.NotFound(w, r)
-		return
-	} else if err != nil {
-		internalError(w, c, err)
-		return
+	if path != r.URL.Path {
+		http.Redirect(w, r, path, 301)
+		return nil
+	}
+	importPath := path[len("/pkg/"):]
+	doc, _, err := getDoc(c, importPath)
+	if err != nil {
+		return err
 	}
 
-	var m map[string]interface{}
-	if err := json.Unmarshal(doc.Data, &m); err != nil {
-		c.Errorf("error unmarshalling json", err)
+	if doc == nil {
+		return executeNotFoundTemplate(w, 404, nil)
 	}
 
-	userURL, _ := path.Split(doc.ProjectURL)
-	m["userURL"] = userURL
-	m["userName"] = path.Base(userURL)
-	m["importPath"] = doc.ImportPath
-	m["packageName"] = doc.PackageName
-	m["projectURL"] = doc.ProjectURL
-	m["projectName"] = doc.ProjectName
-	m["updated"] = time.SecondsToLocalTime(int64(doc.Updated) / 1e6).String()
-	if err := pkgTemplate(w, m); err != nil {
-		c.Errorf("error rendering pkg template:", err)
-	}
+	return executePkgTemplate(w, 200, doc)
 }
 
-func serveHome(w http.ResponseWriter, r *http.Request) {
+func servePackageList(w http.ResponseWriter, r *http.Request) os.Error {
+	c := appengine.NewContext(r)
+	var pkgs []Package
+	keys, err := datastore.NewQuery("Package").GetAll(c, &pkgs)
+	if err != nil {
+		return err
+	}
+
+	for i := range pkgs {
+		pkgs[i].ImportPath = keys[i].StringID()
+	}
+
+	if r.FormValue("text") != "" {
+		var buf bytes.Buffer
+		for _, pkg := range pkgs {
+			buf.WriteString(pkg.ImportPath)
+			buf.WriteByte('\n')
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write(buf.Bytes())
+		return nil
+	}
+
+	return executePkgListTemplate(w, 200, pkgs)
+}
+
+func formatMatch(f string, m []string) string {
+	v := make([]interface{}, 0, len(m))
+	for _, s := range m[1:] {
+		v = append(v, s)
+	}
+	return fmt.Sprintf(f, v...)
+}
+
+func importPathFromGoogleBrowse(m []string) string {
+	dir, err := url.QueryUnescape(m[2])
+	if err != nil {
+		return m[0]
+	}
+	if i := strings.IndexRune(dir, '%'); i >= 0 {
+		dir = dir[:i]
+	}
+	return m[1] + ".googlecode.com/hg" + dir
+}
+
+var importPathCleaners = []struct {
+	pat *regexp.Regexp
+	fn  func([]string) string
+}{
+	{
+		regexp.MustCompile(`^https?:/+github\.com/([^/]+)/([^/]+)/tree/master/(.*)$`),
+		func(m []string) string { return formatMatch("github.com/%s/%s/%s", m) },
+	},
+	{
+		regexp.MustCompile(`^https?:/+bitbucket\.org/([^/]+)/([^/]+)/src/[^/]+/(.*)$`),
+		func(m []string) string { return formatMatch("bitbucket.org/%s/%s/%s", m) },
+	},
+	{
+		regexp.MustCompile(`^http:/+code.google.com/p/([^/]+)/source/browse/#hg(.*)$`),
+		importPathFromGoogleBrowse,
+	},
+	{
+		regexp.MustCompile(`^https?:/+code\.google\.com/p/([^/]+)$`),
+		func(m []string) string { return formatMatch("%s.googlecode.com/hg", m) },
+	},
+	{
+		regexp.MustCompile(`^https?:/+bazaar\.(launchpad\.net/.*)/files$`),
+		func(m []string) string { return m[1] },
+	},
+	{
+		regexp.MustCompile(`^https?:/+(.*)$`),
+		func(m []string) string { return m[1] },
+	},
+}
+
+func cleanImportPath(q string) string {
+	q = strings.Trim(q, "\"/ \t\n")
+	for _, c := range importPathCleaners {
+		if m := c.pat.FindStringSubmatch(q); m != nil {
+			return c.fn(m)
+		}
+	}
+	return q
+}
+
+func serveHome(w http.ResponseWriter, r *http.Request) os.Error {
+	c := appengine.NewContext(r)
+
 	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
+		return executeNotFoundTemplate(w, 404, nil)
 	}
-	c := appengine.NewContext(r)
-	var imports []string
-	if item, found := cacheGet(c, "/", &imports); !found {
-		q := datastore.NewQuery("PackageDoc").KeysOnly()
-		keys, err := q.GetAll(c, nil)
-		if err != nil {
-			internalError(w, c, err)
-			return
-		}
-		for _, key := range keys {
-			imports = append(imports, key.StringID())
-		}
-		cacheSet(c, item, 7200, imports)
+
+	importPath := cleanImportPath(r.FormValue("q"))
+	data := map[string]interface{}{"Host": r.Host}
+
+	// Display simple home page when no query.
+	if importPath == "" {
+		return executeHomeTemplate(w, 200, data)
 	}
-	if err := homeTemplate(w, imports); err != nil {
-		c.Errorf("error rendering home template:", err)
+
+	// Logs show that people are looking for the standard pacakges. Help them
+	// out with a redirect to golang.org.
+	if isStandardPackage(c, importPath) {
+		http.Redirect(w, r, "http://golang.org/pkg/"+importPath, 302)
+		return nil
 	}
+
+	// Get package documentation or index tokens. 
+	doc, indexTokens, err := getDoc(c, importPath)
+	if err != nil {
+		return err
+	}
+
+	// We got it, 
+	if doc != nil {
+		http.Redirect(w, r, "/pkg/"+importPath, 302)
+		return nil
+	}
+
+	// Use index tokens to find suggested import paths.
+	resultChans := make([]chan []string, len(indexTokens))
+	for i := range indexTokens {
+		resultChans[i] = make(chan []string)
+		go func(token string, resultChan chan []string) {
+			keys, err := datastore.NewQuery("Package").Filter("IndexTokens=", token).KeysOnly().GetAll(c, nil)
+			if err != nil {
+				c.Errorf("Query(IndexTokens=%s) -> %v", token, err)
+			}
+			importPaths := make([]string, len(keys))
+			for i, key := range keys {
+				importPaths[i] = key.StringID()
+			}
+			resultChan <- importPaths
+		}(indexTokens[i], resultChans[i])
+	}
+
+	var importPaths []string
+	for _, resultChan := range resultChans {
+		importPaths = append(importPaths, <-resultChan...)
+	}
+
+	data["importPath"] = importPath
+	data["didYouMean"] = importPaths
+	data["oneDidYouMean"] = len(importPaths) == 1
+	return executeHomeTemplate(w, 200, data)
+}
+
+func serveGithbHook(w http.ResponseWriter, r *http.Request) {
 }
 
 func init() {
-	http.HandleFunc("/", serveHome)
-	http.HandleFunc("/pkg/", servePkg)
-	http.HandleFunc("/hook/github", githubHook)
+	http.Handle("/", handlerFunc(serveHome))
+	http.Handle("/pkg/", handlerFunc(servePkg))
+
+	// To avoid errors, register handler for the previously documented Github
+	// post-receive hook. Consider clearing cache from the hook.
+	http.HandleFunc("/hook/github", serveGithbHook)
 }

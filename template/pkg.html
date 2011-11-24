@@ -1,84 +1,95 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<title>{{.projectName|html}}: {{.packageName|html}}</title>
-<link rel="stylesheet" href="/static/base.css?v=1" type="text/css"/> 
+  <meta charset="utf-8">
+  <title>GoPkgDoc: {{.ProjectName|html}}</title>
+  <link href="/static/bootstrap.min.css" rel="stylesheet">
+  <style type="text/css">
+      .container { width: 820px; }
+      .page-header { padding-top: 10px; }
+      code { background-color: white; }
+  </style>
 </head>
+
 <body>
-<div id="header">
-    <div class="content">
-        <h1><a href="{{.userURL|html}}">{{.userName|html}}</a> / <strong><a href="{{.projectURL|html}}">{{.projectName|html}}</a></strong></h1>
-    </div>
+
+<div class="page-header">
+  <div class="container">
+    <h1><a href="/">GoPkgDoc</a>: <a href="{{.ProjectURL|html}}">{{.ProjectName|html}}</a></h1>
+  </div>
 </div>
 
-<div class="content"> 
-<h1>package {{.packageName|html}}</h1>
+<div class="container">
+
+<h2>package {{.PackageName|html}}</h2>
 
 <h4>Table Of Contents</h4>
 <div style="-webkit-column-count: 2; -moz-column-count: 2; column-count: 2">
 <ul>
 <li><a href="#package">Package</a>
-{{if .consts}}<li><a href="#constants">Constants</a>{{end}}
-{{if .vars}}<li><a href="#variables">Variables</a>{{end}}
-{{range .funcs}}<li><a href="#{name}">func {{.name|html}}</a>{{end}}
-{{range .types}}
-<li><a href="#{{.name|html}}">type {{.name|html}}</a>
-    {{if or .factories .methods}}<ul>{{end}}
-    {{range .factories}}<li><a href="#{{.name|html}}">func {{.name|html}}</a>{{end}}
-    {{range .methods}}<li><a href="#{{.recv|html}}.{{.name|html}}">func ({{.recv|html}}) {{.name|html}}</a>{{end}}
-    {{if or .factories .methods}}</ul>{{end}}
+{{if .Consts}}<li><a href="#constants">Constants</a>{{end}}
+{{if .Vars}}<li><a href="#variables">Variables</a>{{end}}
+{{range .Funcs}}<li><a href="#{{.Name}}">func {{.Name|html}}</a>{{end}}
+{{range .Types}}
+<li><a href="#{{.Name|html}}">type {{.Name|html}}</a>
+    {{if or .Factories .Methods}}<ul>{{end}}
+    {{range .Factories}}<li><a href="#{{.Name|html}}">func {{.Name|html}}</a>{{end}}
+    {{range .Methods}}<li><a href="#{{.Recv|html}}.{{.Name|html}}">func ({{.Recv|html}}) {{.Name|html}}</a>{{end}}
+    {{if or .Factories .Methods}}</ul>{{end}}
 {{end}}
 </ul>
 </div> 
 
-<h2 id="package">Package</h2>
+<h3 id="package">Package</h3>
 
-<p><code>import "{{.importPath|html}}"</code></p>
+<p><code>import "{{.ImportPath|html}}"</code></p>
 
-{{.doc|comment}}
+{{.Doc|comment}}
 
 <h4>Package Files</h4>
-<p>{{range .files}}<a href="{{.url|html}}">{{.name|html}}</a> {{end}}</p>
+<p>{{range .Files}}<a href="{{.URL|html}}">{{.Name|html}}</a> {{end}}</p>
 
-{{if .consts}}
-<h2 id="constants">Constants</h2>
-{{range .consts}}{{.doc|comment}}<pre>{{.decl|html}}</pre>{{end}}
+{{if .Consts}}
+<h3 id="constants">Constants</h3>
+{{range .Consts}}{{.Doc|comment}}<pre>{{.Decl|html}}</pre>{{end}}
 {{end}}
 
-{{if .vars}}
-<h2 id="variables">Variables</h2>
-{{range .vars}}{{.doc|comment}}<pre>{{.decl|html}}</pre>{{end}}
+{{if .Vars}}
+<h3 id="variables">Variables</h3>
+{{range .Vars}}{{.Doc|comment}}<pre>{{.Decl|html}}</pre>{{end}}
 {{end}}
 
-{{range .funcs}}
-<h2 id="{{.name|html}}">func <a href="{{.url|html}}">{{.name|html}}</a></h2>
-<p><code>{{.decl|html}}</code></p>
-{{.doc|comment}}
+{{range .Funcs}}
+<h3 id="{{.Name|html}}">func <a href="{{.URL|html}}">{{.Name|html}}</a></h3>
+<p><code>{{.Decl|html}}</code></p>
+{{.Doc|comment}}
 {{end}}
 
-{{range .types}}
-<h2 id="{{.name|html}}">type <a href="{{.url|html}}">{{.name|html}}</a></h2>
-{{.doc|comment}}
-<pre>{{.decl|html}}</pre>
+{{range .Types}}
+<h3 id="{{.Name|html}}">type <a href="{{.URL|html}}">{{.Name|html}}</a></h3>
+{{.Doc|comment}}
+<pre>{{.Decl|html}}</pre>
 
-    {{range .factories}}
-    <h3 id="{{.name|html}}">func <a href="{{.url|html}}">{{.name|html}}</a></h3>
-    <p><code>{{.decl|html}}</code></p>
-    {{.doc|comment}}
+    {{range .Factories}}
+    <h4 id="{{.Name|html}}">func <a href="{{.URL|html}}">{{.Name|html}}</a></h4>
+    <p><code>{{.Decl|html}}</code></p>
+    {{.Doc|comment}}
     {{end}}
 
-    {{range .methods}}
-    <h3 id="{{.recv|html}}.{{.name|html}}">func ({{.recv|html}}) <a href="{{.url|html}}">{{.name|html}}</a></h3>
-    <p><code>{{.decl|html}}</code></p>
-    {{.doc|comment}}
+    {{range .Methods}}
+    <h4 id="{{.Recv|html}}.{{.Name|html}}">func ({{.Recv|html}}) <a href="{{.URL|html}}">{{.Name|html}}</a></h4>
+    <p><code>{{.Decl|html}}</code></p>
+    {{.Doc|comment}}
     {{end}}
 
 {{end}}
+
 </div>
-<div id="footer">
-<div class="content">
-<a href="/">GoPkgDoc</a> generated this page from the <a href="{{.projectURL|html}}">{{.projectName|html}} source code</a> at {{.updated|html}}.
-</div>
-</div>
+
+<footer>
+  <div class="container">
+    <p><a href="/">GoPkgDoc</a> generated this page from the <a href="{{.ProjectURL|html}}">{{.ProjectName|html}} source code</a> {{.Updated|relativeTime}}.
+  </div>
+</footer>
 </body>
 </html>

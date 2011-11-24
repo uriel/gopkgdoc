@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>GoPkgDoc: Packages</title>
+  <link href="/static/bootstrap.min.css" rel="stylesheet">
+  <style type="text/css">
+      .container { width: 820px; }
+      .page-header { padding-top: 10px; }
+      code { background-color: white; }
+  </style>
+</head>
+
+<body>
+
+<div class="page-header">
+  <div class="container">
+    <h1><a href="/">GoPkgDoc</a>: Packages</h1>
+  </div>
+</div>
+
+<div class="container">
+
+<p>This list is updated automatically when packages are viewed on GoPkgDoc.
+
+<table class="condensed-table">
+  <thead><tr><th>Import Path</th><th>Synopsis</th></thead>
+  <tbody>
+    {{range .}}
+      <tr>
+        <td><a href="/pkg/{{.ImportPath|html}}">{{.ImportPath}}</a>
+        <td>{{.Synopsis|comment}}</td>
+      </tr>
+    {{end}}
+  </tbody>
+</table>
+
+</div>
+
+<footer>
+  <div class="container">
+  </div>
+</footer>
+</body>
+</html>

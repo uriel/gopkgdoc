@@ -16,203 +16,105 @@ package app
 
 import (
 	"appengine"
-	"appengine/datastore"
-	"appengine/delay"
-	"appengine/urlfetch"
-	"gob"
+	"appengine/memcache"
 	"http"
-	"io"
-	"io/ioutil"
 	"json"
 	"os"
 	"path"
-	"strconv"
-	"strings"
-	"url"
+	"regexp"
 )
 
 type gitBlob struct {
-	Name string
+	Path string
 	Url  string
 }
 
-func init() {
-	gob.Register([]gitBlob{})
+var githubRawHeader = http.Header{"Accept": {"application/vnd.github-blob.raw"}}
+
+var gitPattern = regexp.MustCompile(`^github\.com/([a-z0-9A-Z_.\-]+)/([a-z0-9A-Z_.\-]+)(/[a-z0-9A-Z_.\-/]*)?$`)
+
+func getGithubIndexTokens(match []string) []string {
+	return []string{"github.com/" + match[1] + "/" + match[2]}
 }
 
-func httpGet(client *http.Client, urlStr string) ([]byte, os.Error) {
-	resp, err := client.Get(urlStr)
+func getGithubDoc(c appengine.Context, match []string) (*packageDoc, os.Error) {
+	importPath := match[0]
+	userName := match[1]
+	repoName := match[2]
+	userRepo := userName + "/" + repoName
+
+	// Normalize to "" or string with trailing '/'.
+	dir := match[3]
+	if len(dir) > 0 {
+		dir = dir[1:] + "/"
+	}
+
+	// There are two approaches for fetching files from Github:
+	//
+	// - Read the zipball or tarball.
+	//
+	// - Use the API to get a list of blobs in the repo and then fetch
+	//   the individual blobs.
+	//
+	// The second approach is used because it is faster and more reliable.
+
+	blobs, err := getGithubBlobs(c, userRepo)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		os.NewError("http status " + strconv.Itoa(resp.StatusCode))
-	}
-	var p []byte
-	if resp.ContentLength >= 0 {
-		p = make([]byte, int(resp.ContentLength))
-		_, err := io.ReadFull(resp.Body, p)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		var err os.Error
-		p, err = ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return nil, err
+
+	var files []file
+	for _, blob := range blobs {
+		d, f := path.Split(blob.Path)
+		if d == dir {
+			files = append(files, file{
+				"https://github.com/" + userRepo + "/blob/master/" + dir + f,
+				newAsyncReader(c, blob.Url, githubRawHeader)})
 		}
 	}
-	return p, nil
+
+	doc, err := createPackageDoc(importPath, "#L%d", files)
+	if err != nil {
+		return nil, err
+	}
+
+	doc.ProjectURL = "https://github.com/" + userRepo
+	doc.ProjectName = repoName
+	return doc, nil
 }
 
-type sliceReaderAt []byte
+func getGithubBlobs(c appengine.Context, userRepo string) ([]gitBlob, os.Error) {
+	var blobs []gitBlob
 
-func (r sliceReaderAt) ReadAt(p []byte, off int64) (int, os.Error) {
-	if int(off) >= len(r) || off < 0 {
-		return 0, os.EINVAL
+	cacheKey := "gitblobs:" + userRepo
+	if err := cacheGet(c, cacheKey, &blobs); err != memcache.ErrCacheMiss {
+		return blobs, err
 	}
-	return copy(p, r[int(off):]), nil
-}
 
-func githubHook(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" || r.Body == nil {
-		http.Redirect(w, r, "/#info", 302)
-		return
-	}
-	c := appengine.NewContext(r)
-	p, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		c.Warningf("error reading req body, %v", err)
-		return
-	}
-	m, err := url.ParseQuery(string(p))
-	if err != nil {
-		c.Warningf("error parsing query, %v", err)
-		return
-	}
-	if len(m["payload"]) == 0 {
-		c.Warningf("payload missing")
-		return
-	}
-	var n struct {
-		Ref        string
-		Repository struct {
-			Url string
-		}
-	}
-	err = json.Unmarshal([]byte(m["payload"][0]), &n)
-	if err != nil {
-		c.Warningf("error decoding hook, %v", err)
-		return
-	}
-	if n.Ref != "refs/heads/master" {
-		c.Infof("ignoring ref %s", n.Ref)
-		return
-	}
-	u, err := url.Parse(n.Repository.Url)
-	if err != nil {
-		c.Errorf("error parsing url %s, %v", n.Repository.Url, err)
-		return
-	}
-	userRepo := u.Path[1:]
-	findPackagesInRepoFunc.Call(c, userRepo)
-}
+	c.Infof("Reading Github repo %s", userRepo)
 
-var findPackagesInRepoFunc = delay.Func("github.repo", findPackagesInRepo)
-
-func findPackagesInRepo(c appengine.Context, userRepo string) {
-	client := urlfetch.Client(c)
-	p, err := httpGet(client, "https://api.github.com/repos/"+userRepo+"/git/trees/master?recursive=1")
+	p, err := httpGet(c, "https://api.github.com/repos/"+userRepo+"/git/trees/master?recursive=1")
 	if err != nil {
-		c.Errorf("could not get repo %s, %v", userRepo, err)
-		panic(err)
+		return nil, err
 	}
-	var repo struct {
+	var tree struct {
 		Tree []struct {
 			Url  string
 			Path string
 			Type string
 		}
 	}
-	err = json.Unmarshal(p, &repo)
+	err = json.Unmarshal(p, &tree)
 	if err != nil {
-		c.Errorf("could not unmarshal repo %s, %v", userRepo, err)
-		return
+		return nil, err
 	}
-	pkgs := make(map[string][]gitBlob)
-	for _, node := range repo.Tree {
-		if node.Type != "blob" {
-			continue
+	for _, node := range tree.Tree {
+		if node.Type == "blob" && includeFileInDoc(node.Path) {
+			blobs = append(blobs, gitBlob{Path: node.Path, Url: node.Url})
 		}
-		dir, name := path.Split(node.Path)
-		if !strings.HasSuffix(name, ".go") ||
-			strings.HasSuffix(name, "_test.go") ||
-			name == "deprecated.go" {
-			continue
-		}
-		pkgs[dir] = append(pkgs[dir], gitBlob{Name: name, Url: node.Url})
 	}
-	for dir, blobs := range pkgs {
-		buildPackageDocFunc.Call(c, userRepo, dir, blobs)
+	if err := cacheSet(c, cacheKey, blobs, 3600); err != nil {
+		return nil, err
 	}
-}
-
-var buildPackageDocFunc = delay.Func("github.doc", buildPackageDoc)
-
-func buildPackageDoc(c appengine.Context, userRepo string, dir string, blobs []gitBlob) {
-	c.Infof("Starting build  for %s %s", userRepo, dir)
-	defer cacheClear(c, "/")
-	client := urlfetch.Client(c)
-	var files []file
-	for _, blob := range blobs {
-		req, err := http.NewRequest("GET", blob.Url, nil)
-		if err != nil {
-			c.Errorf("error creating request for %s", blob.Url)
-			return
-		}
-		req.Header.Set("Accept", "application/vnd.github-blob.raw")
-		resp, err := client.Do(req)
-		if err != nil {
-			c.Errorf("Error doing %s, %v", blob.Url, err)
-			panic(err)
-		}
-		if resp.StatusCode != 200 {
-			c.Errorf("Error fetching %s, %d", blob.Url, resp.StatusCode)
-			panic("bad status")
-		}
-		defer resp.Body.Close()
-		files = append(files, file{Name: blob.Name, Content: resp.Body})
-	}
-
-	importpath := "github.com/" + userRepo
-	fileURLFmt := "http://github.com/" + userRepo + "/blob/master"
-	if dir != "" {
-		d := dir[:len(dir)-1]
-		importpath += "/" + d
-		fileURLFmt += "/" + d
-	}
-	fileURLFmt += "/%s"
-	srcURLFmt := fileURLFmt + "#L%d"
-	projectURL := "http://github.com/" + userRepo
-	projectName := path.Base(userRepo)
-	doc, err := createPackageDoc(importpath, fileURLFmt, srcURLFmt, projectURL, projectName, files)
-	if err != nil {
-		if err == errPackageNotFound {
-			c.Infof("failure generating json for %s, %v", importpath, err)
-			err := datastore.Delete(c, datastore.NewKey(c, "PackageDoc", importpath, 0, nil))
-			if err != nil {
-				c.Infof("error clearing package %s, %v", importpath, err)
-			}
-		} else {
-			c.Errorf("failure generating json for %s, %v", importpath, err)
-		}
-		return
-	}
-	_, err = datastore.Put(c, datastore.NewKey(c, "PackageDoc", importpath, 0, nil), doc)
-	if err != nil {
-		c.Errorf("failure puting doc %s, %v", importpath, err)
-		panic(err)
-	}
-	c.Infof("Created doc for %s %s", userRepo, dir)
+	return blobs, nil
 }
