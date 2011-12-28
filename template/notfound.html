@@ -1,26 +1,21 @@
+{{define "notfound.html"}}
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
+  {{template "CommonHead"}}
   <title>GoPkgDoc: Not Found</title>
-  <link href="/static/bootstrap.min.css" rel="stylesheet">
-  <style type="text/css">
-      .container { width: 820px; }
-      .page-header { padding-top: 10px; }
-      code { background-color: white; }
-  </style>
 </head>
 
 <body>
 
 <div class="page-header">
   <div class="container">
-    <h1><a href="/">GoPkgDoc</a>: Not found.</h1>
+    <h1><a href="/">GoPkgDoc</a> <small>Not Found</small></h1>
   </div>
 </div>
 
 <div class="container">
-  <p>Our team of gophers could not find the web page you are looking for. Try one of these pages:
+  <p>Oh snap! Our team of gophers could not find the web page you are looking for. Try one of these pages:
   <ul>
     <li><a href="/">Home</a>
     <li><a href="/pkg/">Package List</a>
@@ -29,3 +24,4 @@
     
 </body>
 </html>
+{{end}}

@@ -1,14 +1,9 @@
+{{define "pkgList.html"}}
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
+  {{template "CommonHead"}}
   <title>GoPkgDoc: Packages</title>
-  <link href="/static/bootstrap.min.css" rel="stylesheet">
-  <style type="text/css">
-      .container { width: 820px; }
-      .page-header { padding-top: 10px; }
-      code { background-color: white; }
-  </style>
 </head>
 
 <body>
@@ -43,3 +38,4 @@
 </footer>
 </body>
 </html>
+{{end}}

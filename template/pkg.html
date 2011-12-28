@@ -1,14 +1,9 @@
+{{define "pkg.html"}}
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
+  {{template "CommonHead"}}
   <title>GoPkgDoc: {{.ProjectName|html}}</title>
-  <link href="/static/bootstrap.min.css" rel="stylesheet">
-  <style type="text/css">
-      .container { width: 820px; }
-      .page-header { padding-top: 10px; }
-      code { background-color: white; }
-  </style>
 </head>
 
 <body>
@@ -30,11 +25,11 @@
 {{if .Consts}}<li><a href="#constants">Constants</a>{{end}}
 {{if .Vars}}<li><a href="#variables">Variables</a>{{end}}
 {{range .Funcs}}<li><a href="#{{.Name}}">func {{.Name|html}}</a>{{end}}
-{{range .Types}}
+{{range $t := .Types}}
 <li><a href="#{{.Name|html}}">type {{.Name|html}}</a>
     {{if or .Factories .Methods}}<ul>{{end}}
     {{range .Factories}}<li><a href="#{{.Name|html}}">func {{.Name|html}}</a>{{end}}
-    {{range .Methods}}<li><a href="#{{.Recv|html}}.{{.Name|html}}">func ({{.Recv|html}}) {{.Name|html}}</a>{{end}}
+    {{range .Methods}}<li><a href="#{{$t.Name|html}}.{{.Name|html}}">func ({{.Recv|html}}) {{.Name|html}}</a>{{end}}
     {{if or .Factories .Methods}}</ul>{{end}}
 {{end}}
 </ul>
@@ -63,27 +58,30 @@
 <h3 id="{{.Name|html}}">func <a href="{{.URL|html}}">{{.Name|html}}</a></h3>
 <p><code>{{.Decl|html}}</code></p>
 {{.Doc|comment}}
+{{template "Examples" .}}
 {{end}}
 
-{{range .Types}}
+{{range $t := .Types}}
 <h3 id="{{.Name|html}}">type <a href="{{.URL|html}}">{{.Name|html}}</a></h3>
 {{.Doc|comment}}
+{{template "Examples" .}}
 <pre>{{.Decl|html}}</pre>
 
-    {{range .Factories}}
-    <h4 id="{{.Name|html}}">func <a href="{{.URL|html}}">{{.Name|html}}</a></h4>
-    <p><code>{{.Decl|html}}</code></p>
-    {{.Doc|comment}}
-    {{end}}
-
-    {{range .Methods}}
-    <h4 id="{{.Recv|html}}.{{.Name|html}}">func ({{.Recv|html}}) <a href="{{.URL|html}}">{{.Name|html}}</a></h4>
-    <p><code>{{.Decl|html}}</code></p>
-    {{.Doc|comment}}
-    {{end}}
-
+{{range .Factories}}
+<h4 id="{{.Name|html}}">func <a href="{{.URL|html}}">{{.Name|html}}</a></h4>
+<p><code>{{.Decl|html}}</code></p>
+{{.Doc|comment}}
+{{template "Examples" .}}
 {{end}}
 
+{{range .Methods}}
+<h4 id="{{$t.Name|html}}.{{.Name|html}}">func ({{.Recv|html}}) <a href="{{.URL|html}}">{{.Name|html}}</a></h4>
+<p><code>{{.Decl|html}}</code></p>
+{{.Doc|comment}}
+{{template "Examples" .}}
+{{end}}
+
+{{end}}
 </div>
 
 <footer>
@@ -93,3 +91,16 @@
 </footer>
 </body>
 </html>
+{{end}}
+
+{{define "Examples"}}
+{{range .Examples}}
+<p>Example:
+<pre>{{if .Output}}<strong>Code:</strong>
+          
+{{end}}{{.Code|html}}{{if .Output}}
+
+<strong>Output:</strong>
+
+{{.Output|html}}{{end}}</pre>{{end}}
+{{end}}

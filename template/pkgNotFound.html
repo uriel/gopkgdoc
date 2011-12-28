@@ -1,0 +1,39 @@
+{{define "pkgNotFound.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  {{template "CommonHead"}}
+  <title>GoPkgDoc: Not Found</title>
+</head>
+
+<body>
+
+<div class="page-header">
+  <div class="container">
+    <h1><a href="/">GoPkgDoc</a> <small>Not Found</small></h1>
+  </div>
+</div>
+
+<div class="container">
+
+<p>Oh snap! Our team of gophers could not find a package with import path "{{.importPath|html}}".  
+
+{{if .didYouMean}}<p>Did you mean:<ul>{{range .didYouMean}}<li><a href="/pkg/{{.|html}}">{{.|html}}</a>{{end}}</ul>{{end}}
+
+<p>Check the import path and try again.
+
+<div class="row">
+  <form class="form-stacked" action="/" method="GET">
+     <div class="clearfix">
+        <div class="input">
+          <input type="text" class="span6" id="q" name="q" value="{{.importPath|html}}" placeholder="Package import path"/>
+          <button type="submit" class="btn primary">Go</button>
+        </div>
+      </div>
+  </form>
+</div>
+
+</div>
+</body>
+</html>
+{{end}}

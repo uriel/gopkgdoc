@@ -22,11 +22,13 @@ import (
 	"go/parser"
 	"go/printer"
 	"go/token"
+	mydoc "mygo/doc"
 	"os"
 	"path"
 	"strings"
 	"time"
 	"unicode"
+	"utf8"
 )
 
 var errPackageNotFound = os.NewError("package not found")
@@ -34,11 +36,15 @@ var errPackageNotFound = os.NewError("package not found")
 func includeFileInDoc(p string) bool {
 	_, f := path.Split(p)
 	return strings.HasSuffix(f, ".go") &&
-		!strings.HasSuffix(f, "_test.go") &&
 		len(f) > 0 &&
 		f[0] != '_' &&
 		f[0] != '.' &&
 		f != "deprecated.go"
+}
+
+func startsWithUppercase(s string) bool {
+	r, _ := utf8.DecodeRuneInString(s)
+	return unicode.IsUpper(r)
 }
 
 func synopsis(s string) string {
@@ -101,27 +107,56 @@ func valueDocs(fset *token.FileSet, lineFmt string, values []*doc.ValueDoc) []*v
 	return docs
 }
 
-type funcDoc struct {
-	Decl string
-	URL  string
-	Doc  string
-	Name string
-	Recv string
+type exampleDoc struct {
+	Code   string
+	Output string
 }
 
-func funcDocs(fset *token.FileSet, lineFmt string, funcs []*doc.FuncDoc) []*funcDoc {
+func exampleDocs(fset *token.FileSet, examples []*mydoc.Example, name string) []exampleDoc {
+	var docs []exampleDoc
+	for _, e := range examples {
+		if e.Name == name {
+			code := printNode(fset, e.Body)
+			code = strings.Replace(code, "\n    ", "\n", -1)
+			code = code[2 : len(code)-2]
+			docs = append(docs, exampleDoc{code, e.Output})
+		}
+	}
+	return docs
+}
+
+type funcDoc struct {
+	Decl     string
+	URL      string
+	Doc      string
+	Name     string
+	Recv     string
+	Examples []exampleDoc
+}
+
+func funcDocs(fset *token.FileSet, examples []*mydoc.Example, lineFmt string, funcs []*doc.FuncDoc) []*funcDoc {
 	var docs []*funcDoc
 	for _, d := range funcs {
+		exampleName := d.Name
 		recv := ""
 		if d.Recv != nil {
 			recv = printNode(fset, d.Recv)
+			r := d.Recv
+			if t, ok := r.(*ast.StarExpr); ok {
+				r = t.X
+			}
+			if t, ok := r.(*ast.Ident); ok {
+				exampleName = t.Name + "_" + exampleName
+			}
 		}
+
 		docs = append(docs, &funcDoc{
-			Decl: printNode(fset, d.Decl),
-			URL:  printPos(fset, lineFmt, d.Decl.Pos()),
-			Doc:  d.Doc,
-			Name: d.Name,
-			Recv: recv,
+			Decl:     printNode(fset, d.Decl),
+			URL:      printPos(fset, lineFmt, d.Decl.Pos()),
+			Doc:      d.Doc,
+			Name:     d.Name,
+			Recv:     recv,
+			Examples: exampleDocs(fset, examples, exampleName),
 		})
 	}
 	return docs
@@ -134,9 +169,10 @@ type typeDoc struct {
 	URL       string
 	Factories []*funcDoc
 	Methods   []*funcDoc
+	Examples  []exampleDoc
 }
 
-func typeDocs(fset *token.FileSet, lineFmt string, types []*doc.TypeDoc) []*typeDoc {
+func typeDocs(fset *token.FileSet, examples []*mydoc.Example, lineFmt string, types []*doc.TypeDoc) []*typeDoc {
 	var docs []*typeDoc
 	for _, d := range types {
 		docs = append(docs, &typeDoc{
@@ -144,8 +180,9 @@ func typeDocs(fset *token.FileSet, lineFmt string, types []*doc.TypeDoc) []*type
 			Name:      printNode(fset, d.Type.Name),
 			Decl:      printNode(fset, d.Decl),
 			URL:       printPos(fset, lineFmt, d.Decl.Pos()),
-			Factories: funcDocs(fset, lineFmt, d.Factories),
-			Methods:   funcDocs(fset, lineFmt, d.Methods),
+			Factories: funcDocs(fset, examples, lineFmt, d.Factories),
+			Methods:   funcDocs(fset, examples, lineFmt, d.Methods),
+			Examples:  exampleDocs(fset, examples, d.Type.Name.Name),
 		})
 	}
 	return docs
@@ -196,6 +233,9 @@ func createPackageDoc(importPath string, lineFmt string, files []file) (*package
 	fset := token.NewFileSet()
 	pkgs := make(map[string]*ast.Package)
 	for _, f := range files {
+		if strings.HasSuffix(f.url, "_test.go") {
+			continue
+		}
 		if src, err := parser.ParseFile(fset, f.url, f.content, parser.ParseComments); err == nil {
 			name := src.Name.Name
 			pkg, found := pkgs[name]
@@ -229,15 +269,32 @@ func createPackageDoc(importPath string, lineFmt string, files []file) (*package
 	ast.PackageExports(pkg)
 	pdoc := doc.NewPackageDoc(pkg, importPath)
 
+	var examples []*mydoc.Example
+	for _, f := range files {
+		if !strings.HasSuffix(f.url, "_test.go") {
+			continue
+		}
+		if src, err := parser.ParseFile(fset, f.url, f.content, parser.ParseComments); err == nil {
+			for _, e := range mydoc.Examples(&ast.Package{src.Name.Name, nil, nil, map[string]*ast.File{f.url: src}}) {
+				if i := strings.LastIndex(e.Name, "_"); i >= 0 {
+					if i < len(e.Name)-1 && !startsWithUppercase(e.Name[i+1:]) {
+						e.Name = e.Name[:i]
+					}
+				}
+				examples = append(examples, e)
+			}
+		}
+	}
+
 	return &packageDoc{
 		Consts:      valueDocs(fset, lineFmt, pdoc.Consts),
 		Doc:         pdoc.Doc,
 		Synopsis:    synopsis(pdoc.Doc),
 		Files:       fileDocs(pdoc.Filenames),
-		Funcs:       funcDocs(fset, lineFmt, pdoc.Funcs),
+		Funcs:       funcDocs(fset, examples, lineFmt, pdoc.Funcs),
 		ImportPath:  pdoc.ImportPath,
 		PackageName: pdoc.PackageName,
-		Types:       typeDocs(fset, lineFmt, pdoc.Types),
+		Types:       typeDocs(fset, examples, lineFmt, pdoc.Types),
 		Updated:     time.Seconds(),
 		Vars:        valueDocs(fset, lineFmt, pdoc.Vars),
 	}, nil

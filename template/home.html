@@ -1,13 +1,10 @@
+{{define "home.html"}}
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
+  {{template "CommonHead"}}
+  <style type="text/css">body { padding-top: 30px; } </style>
   <title>GoPkgDoc</title>
-  <link href="/static/bootstrap.min.css" rel="stylesheet">
-  <style type="text/css">
-      body { padding-top: 30px; }
-      .container { width: 820px; }
-  </style>
 </head>
 
 <body>
@@ -54,3 +51,4 @@
   </div>
 </body>
 </html>
+{{end}}

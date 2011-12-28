@@ -20,35 +20,49 @@ import (
 	"regexp"
 )
 
-var googlePattern = regexp.MustCompile(`^([a-z0-9\-]+)\.googlecode\.com/(hg|git|svn)(/[a-z0-9A-Z_.\-/]*)?$`)
+var googlePattern = regexp.MustCompile(`^code\.google\.com/p/([a-z0-9\-]+(\.[a-z0-9\-]+)?)(/[a-z0-9A-Z_.\-/]+)?$`)
+var googleRepoRe = regexp.MustCompile(`id="checkoutcmd">(hg|git|svn)`)
 var googleFilePattern = regexp.MustCompile(`<li><a href="([^"/]+)"`)
 
 func getGoogleIndexTokens(match []string) []string {
-	return []string{match[1] + ".googlecode.com"}
+	return []string{"code.google.com/p/" + match[1]}
 }
 
 func getGoogleDoc(c appengine.Context, match []string) (*packageDoc, os.Error) {
 
 	importPath := match[0]
-	projectName := match[1]
+	projectName := match[1] + match[2] // TODO: handle sub repo
 	dir := match[3]
 	if len(dir) > 0 {
 		dir = dir[1:] + "/"
 	}
 
-	p, err := httpGet(c, "http://"+importPath+"/")
+	// Scrape the HTML project page to find the VCS.
+	p, err := httpGet(c, "http://code.google.com/p/"+projectName+"/source/checkout")
 	if err != nil {
 		return nil, err
 	}
 
-	// Scrape the HTML to find individual Go files.
+	var vcs string
+	if m := googleRepoRe.FindSubmatch(p); m != nil {
+		vcs = string(m[1])
+	} else {
+		return nil, errPackageNotFound
+	}
+
+	// Scrape the repo browser to find indvidual Go files.
+	p, err = httpGet(c, "http://"+projectName+".googlecode.com/"+vcs+"/"+dir)
+	if err != nil {
+		return nil, err
+	}
+
 	var files []file
 	for _, m := range googleFilePattern.FindAllSubmatch(p, -1) {
 		fname := string(m[1])
 		if includeFileInDoc(fname) {
 			files = append(files, file{
 				"http://code.google.com/p/" + projectName + "/source/browse/" + dir + fname,
-				newAsyncReader(c, "http://"+importPath+"/"+fname, nil)})
+				newAsyncReader(c, "http://"+projectName+".googlecode.com/"+vcs+"/"+dir+fname, nil)})
 		}
 	}
 

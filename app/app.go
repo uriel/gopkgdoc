@@ -19,13 +19,17 @@ import (
 	"appengine/datastore"
 	"appengine/memcache"
 	"bytes"
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"go/doc"
 	"http"
+	"io/ioutil"
 	"os"
 	"path"
 	"regexp"
 	"strings"
+	"sync"
 	"template"
 	"time"
 	"url"
@@ -131,34 +135,53 @@ func commentFmt(v string) string {
 	return buf.String()
 }
 
-var fmap = template.FuncMap{"comment": commentFmt, "relativeTime": relativeTime}
+var (
+	staticMutex sync.RWMutex
+	staticHash  = make(map[string]string)
+)
 
-func parseTemplate(name string) func(http.ResponseWriter, int, interface{}) os.Error {
-	if appengine.IsDevAppServer() {
-		return func(w http.ResponseWriter, status int, value interface{}) os.Error {
-			t, err := template.New(name).Funcs(fmap).ParseFile(name)
-			if err != nil {
-				return err
-			}
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.WriteHeader(status)
-			return t.Execute(w, value)
+func staticURL(path string) string {
+	staticMutex.RLock()
+	h, ok := staticHash[path]
+	staticMutex.RUnlock()
+
+	if !ok {
+		p, err := ioutil.ReadFile(path[1:])
+		if err != nil {
+			return path
 		}
+
+		m := md5.New()
+		m.Write(p)
+		h = hex.EncodeToString(m.Sum())
+
+		staticMutex.Lock()
+		staticHash[path] = h
+		staticMutex.Unlock()
 	}
-	t := template.Must(template.New(name).Funcs(fmap).ParseFile(name))
-	return func(w http.ResponseWriter, status int, value interface{}) os.Error {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(status)
-		return t.Execute(w, value)
-	}
+	return path + "?v=" + h
 }
 
-var (
-	executeHomeTemplate     = parseTemplate("template/home.html")
-	executePkgTemplate      = parseTemplate("template/pkg.html")
-	executeNotFoundTemplate = parseTemplate("template/notfound.html")
-	executePkgListTemplate  = parseTemplate("template/packageList.html")
-)
+var fmap = template.FuncMap{
+	"comment":      commentFmt,
+	"relativeTime": relativeTime,
+	"staticURL":    staticURL,
+}
+
+var templates template.Set
+
+func executeTemplate(w http.ResponseWriter, name string, status int, data interface{}) os.Error {
+	s := &templates
+	if appengine.IsDevAppServer() {
+		s = &template.Set{}
+		if _, err := s.Funcs(fmap).ParseGlob("template/*.html"); err != nil {
+			return err
+		}
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	return s.Execute(w, name, data)
+}
 
 type handlerFunc func(http.ResponseWriter, *http.Request) os.Error
 
@@ -182,16 +205,23 @@ func servePkg(w http.ResponseWriter, r *http.Request) os.Error {
 		return nil
 	}
 	importPath := path[len("/pkg/"):]
+
+	// Fix old Google Project Hosting path
+	if m := oldGooglePattern.FindStringSubmatch(importPath); m != nil {
+		http.Redirect(w, r, "/pkg/"+newGooglePath(m), 301)
+		return nil
+	}
+
 	doc, _, err := getDoc(c, importPath)
 	if err != nil {
 		return err
 	}
 
 	if doc == nil {
-		return executeNotFoundTemplate(w, 404, nil)
+		return executeTemplate(w, "notfound.html", 404, nil)
 	}
 
-	return executePkgTemplate(w, 200, doc)
+	return executeTemplate(w, "pkg.html", 200, doc)
 }
 
 func servePackageList(w http.ResponseWriter, r *http.Request) os.Error {
@@ -217,15 +247,7 @@ func servePackageList(w http.ResponseWriter, r *http.Request) os.Error {
 		return nil
 	}
 
-	return executePkgListTemplate(w, 200, pkgs)
-}
-
-func formatMatch(f string, m []string) string {
-	v := make([]interface{}, 0, len(m))
-	for _, s := range m[1:] {
-		v = append(v, s)
-	}
-	return fmt.Sprintf(f, v...)
+	return executeTemplate(w, "pkgList.html", 200, pkgs)
 }
 
 func importPathFromGoogleBrowse(m []string) string {
@@ -236,7 +258,13 @@ func importPathFromGoogleBrowse(m []string) string {
 	if i := strings.IndexRune(dir, '%'); i >= 0 {
 		dir = dir[:i]
 	}
-	return m[1] + ".googlecode.com/hg" + dir
+	return "code.google.com/p/" + m[1] + dir
+}
+
+var oldGooglePattern = regexp.MustCompile(`^([a-z0-9\-]+)\.googlecode\.com/(svn|git|hg)(/[a-z0-9A-Z_.\-/]+)?$`)
+
+func newGooglePath(m []string) string {
+	return "code.google.com/p/" + m[1] + m[3]
 }
 
 var importPathCleaners = []struct {
@@ -245,19 +273,15 @@ var importPathCleaners = []struct {
 }{
 	{
 		regexp.MustCompile(`^https?:/+github\.com/([^/]+)/([^/]+)/tree/master/(.*)$`),
-		func(m []string) string { return formatMatch("github.com/%s/%s/%s", m) },
+		func(m []string) string { return fmt.Sprintf("github.com/%s/%s/%s", m[1], m[2], m[3]) },
 	},
 	{
 		regexp.MustCompile(`^https?:/+bitbucket\.org/([^/]+)/([^/]+)/src/[^/]+/(.*)$`),
-		func(m []string) string { return formatMatch("bitbucket.org/%s/%s/%s", m) },
+		func(m []string) string { return fmt.Sprintf("bitbucket.org/%s/%s/%s", m[1], m[2], m[3]) },
 	},
 	{
 		regexp.MustCompile(`^http:/+code.google.com/p/([^/]+)/source/browse/#hg(.*)$`),
 		importPathFromGoogleBrowse,
-	},
-	{
-		regexp.MustCompile(`^https?:/+code\.google\.com/p/([^/]+)$`),
-		func(m []string) string { return formatMatch("%s.googlecode.com/hg", m) },
 	},
 	{
 		regexp.MustCompile(`^https?:/+bazaar\.(launchpad\.net/.*)/files$`),
@@ -266,6 +290,10 @@ var importPathCleaners = []struct {
 	{
 		regexp.MustCompile(`^https?:/+(.*)$`),
 		func(m []string) string { return m[1] },
+	},
+	{
+		oldGooglePattern,
+		newGooglePath,
 	},
 }
 
@@ -283,15 +311,15 @@ func serveHome(w http.ResponseWriter, r *http.Request) os.Error {
 	c := appengine.NewContext(r)
 
 	if r.URL.Path != "/" {
-		return executeNotFoundTemplate(w, 404, nil)
+		return executeTemplate(w, "notfound.html", 404, nil)
 	}
 
 	importPath := cleanImportPath(r.FormValue("q"))
-	data := map[string]interface{}{"Host": r.Host}
 
 	// Display simple home page when no query.
 	if importPath == "" {
-		return executeHomeTemplate(w, 200, data)
+		return executeTemplate(w, "home.html", 200,
+			map[string]interface{}{"Host": r.Host})
 	}
 
 	// Logs show that people are looking for the standard pacakges. Help them
@@ -335,16 +363,16 @@ func serveHome(w http.ResponseWriter, r *http.Request) os.Error {
 		importPaths = append(importPaths, <-resultChan...)
 	}
 
-	data["importPath"] = importPath
-	data["didYouMean"] = importPaths
-	data["oneDidYouMean"] = len(importPaths) == 1
-	return executeHomeTemplate(w, 200, data)
+	return executeTemplate(w, "pkgNotFound.html", 200,
+		map[string]interface{}{"importPath": importPath, "didYouMean": importPaths})
 }
 
 func serveGithbHook(w http.ResponseWriter, r *http.Request) {
 }
 
 func init() {
+	template.SetMust(templates.Funcs(fmap).ParseGlob("template/*.html"))
+
 	http.Handle("/", handlerFunc(serveHome))
 	http.Handle("/pkg/", handlerFunc(servePkg))
 
