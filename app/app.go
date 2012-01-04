@@ -226,19 +226,36 @@ func servePkg(w http.ResponseWriter, r *http.Request) os.Error {
 
 func servePackageList(w http.ResponseWriter, r *http.Request) os.Error {
 	c := appengine.NewContext(r)
-	var pkgs []Package
-	keys, err := datastore.NewQuery("Package").GetAll(c, &pkgs)
-	if err != nil {
-		return err
+
+	var pkgList struct {
+		Packages []Package
+		Updated  int64
 	}
 
-	for i := range pkgs {
-		pkgs[i].ImportPath = keys[i].StringID()
+	const cacheKey = "pkgList"
+	err := cacheGet(c, cacheKey, &pkgList)
+	switch err {
+	case memcache.ErrCacheMiss:
+		keys, err := datastore.NewQuery("Package").GetAll(c, &pkgList.Packages)
+		if err != nil {
+			return err
+		}
+		for i := range pkgList.Packages {
+			pkgList.Packages[i].ImportPath = keys[i].StringID()
+		}
+		pkgList.Updated = time.Seconds()
+		if err := cacheSet(c, cacheKey, &pkgList, 3600); err != nil {
+			return err
+		}
+	case nil:
+		// nothing to do
+	default:
+		return err
 	}
 
 	if r.FormValue("text") != "" {
 		var buf bytes.Buffer
-		for _, pkg := range pkgs {
+		for _, pkg := range pkgList.Packages {
 			buf.WriteString(pkg.ImportPath)
 			buf.WriteByte('\n')
 		}
@@ -247,7 +264,7 @@ func servePackageList(w http.ResponseWriter, r *http.Request) os.Error {
 		return nil
 	}
 
-	return executeTemplate(w, "pkgList.html", 200, pkgs)
+	return executeTemplate(w, "pkgList.html", 200, &pkgList)
 }
 
 func importPathFromGoogleBrowse(m []string) string {

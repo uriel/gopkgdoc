@@ -21,7 +21,7 @@
 <table class="condensed-table">
   <thead><tr><th>Import Path</th><th>Synopsis</th></thead>
   <tbody>
-    {{range .}}
+    {{range .Packages}}
       <tr>
         <td><a href="/pkg/{{.ImportPath|html}}">{{.ImportPath}}</a>
         <td>{{.Synopsis|comment}}</td>
@@ -34,6 +34,7 @@
 
 <footer>
   <div class="container">
+    <p><a href="/">GoPkgDoc</a> generated this page {{.Updated|relativeTime}}. Number of packages: {{len .Packages}}
   </div>
 </footer>
 </body>
