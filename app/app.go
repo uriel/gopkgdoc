@@ -384,6 +384,10 @@ func serveHome(w http.ResponseWriter, r *http.Request) os.Error {
 		map[string]interface{}{"importPath": importPath, "didYouMean": importPaths})
 }
 
+func redirectQuery(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/?q="+url.QueryEscape(r.URL.Path), 301)
+}
+
 func serveGithbHook(w http.ResponseWriter, r *http.Request) {
 }
 
@@ -392,6 +396,9 @@ func init() {
 
 	http.Handle("/", handlerFunc(serveHome))
 	http.Handle("/pkg/", handlerFunc(servePkg))
+	http.HandleFunc("/bitbucket.org/", redirectQuery)
+	http.HandleFunc("/github.com/", redirectQuery)
+	http.HandleFunc("/code.google.com/", redirectQuery)
 
 	// To avoid errors, register handler for the previously documented Github
 	// post-receive hook. Consider clearing cache from the hook.
