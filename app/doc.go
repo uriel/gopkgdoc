@@ -167,6 +167,8 @@ type typeDoc struct {
 	Name      string
 	Decl      string
 	URL       string
+	Consts    []*valueDoc
+	Vars      []*valueDoc
 	Factories []*funcDoc
 	Methods   []*funcDoc
 	Examples  []exampleDoc
@@ -180,6 +182,8 @@ func typeDocs(fset *token.FileSet, examples []*mydoc.Example, lineFmt string, ty
 			Name:      printNode(fset, d.Type.Name),
 			Decl:      printNode(fset, d.Decl),
 			URL:       printPos(fset, lineFmt, d.Decl.Pos()),
+			Consts:    valueDocs(fset, lineFmt, d.Consts),
+			Vars:      valueDocs(fset, lineFmt, d.Vars),
 			Factories: funcDocs(fset, examples, lineFmt, d.Factories),
 			Methods:   funcDocs(fset, examples, lineFmt, d.Methods),
 			Examples:  exampleDocs(fset, examples, d.Type.Name.Name),

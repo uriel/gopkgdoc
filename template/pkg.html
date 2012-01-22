@@ -64,8 +64,10 @@
 {{range $t := .Types}}
 <h3 id="{{.Name|html}}">type <a href="{{.URL|html}}">{{.Name|html}}</a></h3>
 {{.Doc|comment}}
-{{template "Examples" .}}
 <pre>{{.Decl|html}}</pre>
+{{range .Consts}}{{.Doc|comment}}<pre>{{.Decl|html}}</pre>{{end}}
+{{range .Vars}}{{.Doc|comment}}<pre>{{.Decl|html}}</pre>{{end}}
+{{template "Examples" .}}
 
 {{range .Factories}}
 <h4 id="{{.Name|html}}">func <a href="{{.URL|html}}">{{.Name|html}}</a></h4>
