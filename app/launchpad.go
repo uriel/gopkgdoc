@@ -19,6 +19,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"doc"
 	"io/ioutil"
 	"os"
 	"path"
@@ -32,7 +33,7 @@ func getLaunchpadIndexTokens(match []string) []string {
 	return []string{"launchpad.net/" + match[1]}
 }
 
-func getLaunchpadDoc(c appengine.Context, match []string) (*packageDoc, os.Error) {
+func getLaunchpadDoc(c appengine.Context, match []string) (*doc.Package, os.Error) {
 
 	importPath := match[0]
 	repo := match[1]
@@ -60,7 +61,7 @@ func getLaunchpadDoc(c appengine.Context, match []string) (*packageDoc, os.Error
 	tr := tar.NewReader(gzr)
 
 	prefix := "+branch/" + repo + "/"
-	var files []file
+	var files []doc.Source
 	for {
 		hdr, err := tr.Next()
 		if err == os.EOF {
@@ -76,24 +77,24 @@ func getLaunchpadDoc(c appengine.Context, match []string) (*packageDoc, os.Error
 		if d != dir {
 			continue
 		}
-		if !includeFileInDoc(f) {
+		if !doc.UseFile(f) {
 			continue
 		}
 		b, err := ioutil.ReadAll(tr)
 		if err != nil {
 			return nil, err
 		}
-		files = append(files, file{
+		files = append(files, doc.Source{
 			"http://bazaar.launchpad.net/+branch/" + repo + "/view/head:/" + hdr.Name[len(prefix):],
 			b})
 	}
 
-	doc, err := createPackageDoc(importPath, "#L%d", files)
+	pdoc, err := doc.Build(importPath, "#L%d", files)
 	if err != nil {
 		return nil, err
 	}
 
-	doc.ProjectName = projectName
-	doc.ProjectURL = projectURL
-	return doc, nil
+	pdoc.ProjectName = projectName
+	pdoc.ProjectURL = projectURL
+	return pdoc, nil
 }

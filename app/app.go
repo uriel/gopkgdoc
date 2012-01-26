@@ -20,9 +20,9 @@ import (
 	"appengine/memcache"
 	"bytes"
 	"crypto/md5"
+	"doc"
 	"encoding/hex"
 	"fmt"
-	"go/doc"
 	"http"
 	"io/ioutil"
 	"os"
@@ -45,7 +45,7 @@ type Package struct {
 
 var hosts = []struct {
 	pattern        *regexp.Regexp
-	getDoc         func(appengine.Context, []string) (*packageDoc, os.Error)
+	getDoc         func(appengine.Context, []string) (*doc.Package, os.Error)
 	getIndexTokens func([]string) []string
 }{
 	{gitPattern, getGithubDoc, getGithubIndexTokens},
@@ -63,14 +63,14 @@ func canonicalizeTokens(tokens []string) []string {
 
 // getDoc returns the document for the given import path or a list of search
 // tokens for the import path.
-func getDoc(c appengine.Context, importPath string) (*packageDoc, []string, os.Error) {
+func getDoc(c appengine.Context, importPath string) (*doc.Package, []string, os.Error) {
 	cacheKey := "doc:" + importPath
 
 	// Cached?
-	var doc *packageDoc
-	err := cacheGet(c, cacheKey, &doc)
+	var pdoc *doc.Package
+	err := cacheGet(c, cacheKey, &pdoc)
 	if err == nil {
-		return doc, nil, nil
+		return pdoc, nil, nil
 	}
 	if err != memcache.ErrCacheMiss {
 		return nil, nil, err
@@ -79,9 +79,9 @@ func getDoc(c appengine.Context, importPath string) (*packageDoc, []string, os.E
 	for _, h := range hosts {
 		if m := h.pattern.FindStringSubmatch(importPath); m != nil {
 			c.Infof("Reading package %s", importPath)
-			doc, err = h.getDoc(c, m)
+			pdoc, err = h.getDoc(c, m)
 			switch {
-			case err == errPackageNotFound:
+			case err == doc.ErrPackageNotFound:
 				if err := datastore.Delete(c,
 					datastore.NewKey(c, "Package", importPath, 0, nil)); err != datastore.ErrNoSuchEntity && err != nil {
 					c.Errorf("Delete(%s) -> %v", importPath, err)
@@ -90,24 +90,24 @@ func getDoc(c appengine.Context, importPath string) (*packageDoc, []string, os.E
 			case err != nil:
 				return nil, nil, err
 			default:
-				if err := cacheSet(c, cacheKey, doc, 3600); err != nil {
+				if err := cacheSet(c, cacheKey, pdoc, 3600); err != nil {
 					return nil, nil, err
 				}
 				indexTokens := h.getIndexTokens(m)
-				if doc.PackageName != "main" {
-					indexTokens = append(indexTokens, doc.PackageName)
+				if pdoc.Name != "main" {
+					indexTokens = append(indexTokens, pdoc.Name)
 				}
 				indexTokens = canonicalizeTokens(indexTokens)
 				if _, err := datastore.Put(c,
 					datastore.NewKey(c, "Package", importPath, 0, nil),
 					&Package{
-						Synopsis:    doc.Synopsis,
-						PackageName: doc.PackageName,
+						Synopsis:    pdoc.Synopsis,
+						PackageName: pdoc.Name,
 						IndexTokens: indexTokens,
 					}); err != nil {
 					c.Errorf("Put(%s) -> %v", importPath, err)
 				}
-				return doc, nil, nil
+				return pdoc, nil, nil
 			}
 		}
 	}
@@ -131,7 +131,7 @@ func relativeTime(t int64) string {
 
 func commentFmt(v string) string {
 	var buf bytes.Buffer
-	doc.ToHTML(&buf, []byte(v), nil)
+	doc.ToHTML(&buf, []byte(v))
 	return buf.String()
 }
 
@@ -212,16 +212,16 @@ func servePkg(w http.ResponseWriter, r *http.Request) os.Error {
 		return nil
 	}
 
-	doc, _, err := getDoc(c, importPath)
+	pdoc, _, err := getDoc(c, importPath)
 	if err != nil {
 		return err
 	}
 
-	if doc == nil {
+	if pdoc == nil {
 		return executeTemplate(w, "notfound.html", 404, nil)
 	}
 
-	return executeTemplate(w, "pkg.html", 200, doc)
+	return executeTemplate(w, "pkg.html", 200, pdoc)
 }
 
 func servePackageList(w http.ResponseWriter, r *http.Request) os.Error {
@@ -347,13 +347,13 @@ func serveHome(w http.ResponseWriter, r *http.Request) os.Error {
 	}
 
 	// Get package documentation or index tokens. 
-	doc, indexTokens, err := getDoc(c, importPath)
+	pdoc, indexTokens, err := getDoc(c, importPath)
 	if err != nil {
 		return err
 	}
 
 	// We got it, 
-	if doc != nil {
+	if pdoc != nil {
 		http.Redirect(w, r, "/pkg/"+importPath, 302)
 		return nil
 	}

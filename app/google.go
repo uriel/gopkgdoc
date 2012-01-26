@@ -16,6 +16,7 @@ package app
 
 import (
 	"appengine"
+	"doc"
 	"os"
 	"regexp"
 )
@@ -28,7 +29,7 @@ func getGoogleIndexTokens(match []string) []string {
 	return []string{"code.google.com/p/" + match[1]}
 }
 
-func getGoogleDoc(c appengine.Context, match []string) (*packageDoc, os.Error) {
+func getGoogleDoc(c appengine.Context, match []string) (*doc.Package, os.Error) {
 
 	importPath := match[0]
 	projectName := match[1] + match[2] // TODO: handle sub repo
@@ -47,7 +48,7 @@ func getGoogleDoc(c appengine.Context, match []string) (*packageDoc, os.Error) {
 	if m := googleRepoRe.FindSubmatch(p); m != nil {
 		vcs = string(m[1])
 	} else {
-		return nil, errPackageNotFound
+		return nil, doc.ErrPackageNotFound
 	}
 
 	// Scrape the repo browser to find indvidual Go files.
@@ -56,22 +57,22 @@ func getGoogleDoc(c appengine.Context, match []string) (*packageDoc, os.Error) {
 		return nil, err
 	}
 
-	var files []file
+	var files []doc.Source
 	for _, m := range googleFilePattern.FindAllSubmatch(p, -1) {
 		fname := string(m[1])
-		if includeFileInDoc(fname) {
-			files = append(files, file{
+		if doc.UseFile(fname) {
+			files = append(files, doc.Source{
 				"http://code.google.com/p/" + projectName + "/source/browse/" + dir + fname,
 				newAsyncReader(c, "http://"+projectName+".googlecode.com/"+vcs+"/"+dir+fname, nil)})
 		}
 	}
 
-	doc, err := createPackageDoc(importPath, "#%d", files)
+	pdoc, err := doc.Build(importPath, "#%d", files)
 	if err != nil {
 		return nil, err
 	}
 
-	doc.ProjectName = projectName
-	doc.ProjectURL = "http://code.google.com/p/" + projectName + "/"
-	return doc, nil
+	pdoc.ProjectName = projectName
+	pdoc.ProjectURL = "http://code.google.com/p/" + projectName + "/"
+	return pdoc, nil
 }

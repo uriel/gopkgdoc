@@ -16,6 +16,7 @@ package app
 
 import (
 	"appengine"
+	"doc"
 	"json"
 	"os"
 	"regexp"
@@ -27,7 +28,7 @@ func getBitbucketIndexTokens(match []string) []string {
 	return []string{"bitbucket.org/" + match[1] + "/" + match[2]}
 }
 
-func getBitbucketDoc(c appengine.Context, match []string) (*packageDoc, os.Error) {
+func getBitbucketDoc(c appengine.Context, match []string) (*doc.Package, os.Error) {
 
 	importPath := match[0]
 	userName := match[1]
@@ -54,21 +55,21 @@ func getBitbucketDoc(c appengine.Context, match []string) (*packageDoc, os.Error
 		return nil, err
 	}
 
-	var files []file
+	var files []doc.Source
 	for _, f := range directory.Files {
-		if includeFileInDoc(f.Path) {
-			files = append(files, file{
+		if doc.UseFile(f.Path) {
+			files = append(files, doc.Source{
 				"https://bitbucket.org/" + userName + "/" + repoName + "/src/tip/" + f.Path,
 				newAsyncReader(c, "https://api.bitbucket.org/1.0/repositories/"+userName+"/"+repoName+"/raw/tip/"+f.Path, nil)})
 		}
 	}
 
-	doc, err := createPackageDoc(importPath, "#cl-%d", files)
+	pdoc, err := doc.Build(importPath, "#cl-%d", files)
 	if err != nil {
 		return nil, err
 	}
 
-	doc.ProjectName = repoName
-	doc.ProjectURL = "https://bitbucket.org/" + userName + "/" + repoName + "/"
-	return doc, nil
+	pdoc.ProjectName = repoName
+	pdoc.ProjectURL = "https://bitbucket.org/" + userName + "/" + repoName + "/"
+	return pdoc, nil
 }

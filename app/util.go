@@ -5,6 +5,7 @@ import (
 	"appengine/memcache"
 	"appengine/urlfetch"
 	"bytes"
+	"doc"
 	"fmt"
 	"gob"
 	"http"
@@ -83,7 +84,7 @@ func newAsyncReader(c appengine.Context, url string, header http.Header) io.Read
 }
 
 // httpGet gets the resource at url. If the resource is not found,
-// errPackageNotFound is returned.
+// doc.ErrPackageNotFound is returned.
 func httpGet(c appengine.Context, url string) ([]byte, os.Error) {
 	resp, err := urlfetch.Client(c).Get(url)
 	if err != nil {
@@ -92,7 +93,7 @@ func httpGet(c appengine.Context, url string) ([]byte, os.Error) {
 	defer resp.Body.Close()
 	switch {
 	case resp.StatusCode == 404:
-		return nil, errPackageNotFound
+		return nil, doc.ErrPackageNotFound
 	case resp.StatusCode != 200:
 		return nil, fmt.Errorf("get %s -> %d", url, resp.StatusCode)
 	}
