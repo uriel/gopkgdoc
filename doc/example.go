@@ -8,22 +8,21 @@ package doc
 
 import (
 	"go/ast"
-	godoc "go/doc"
-	//"go/printer"
+	"go/doc"
 	"strings"
 	"unicode"
 	"utf8"
 )
 
-type Example struct {
+type goExample struct {
 	Name string // name of the item being demonstrated
 	//Body   *printer.CommentedNode // code
 	Body   ast.Node
 	Output string // expected output
 }
 
-func Examples(pkg *ast.Package) []*Example {
-	var examples []*Example
+func goExamples(pkg *ast.Package) []*goExample {
+	var examples []*goExample
 	for _, src := range pkg.Files {
 		for _, decl := range src.Decls {
 			f, ok := decl.(*ast.FuncDecl)
@@ -34,11 +33,11 @@ func Examples(pkg *ast.Package) []*Example {
 			if !isTest(name, "Example") {
 				continue
 			}
-			examples = append(examples, &Example{
+			examples = append(examples, &goExample{
 				Name: name[len("Example"):],
 				//Body:   &printer.CommentedNode{f.Body, src.Comments},
 				Body:   f.Body,
-				Output: godoc.CommentText(f.Doc),
+				Output: doc.CommentText(f.Doc),
 			})
 		}
 	}

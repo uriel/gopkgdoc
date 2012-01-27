@@ -23,7 +23,6 @@ import (
 	"go/printer"
 	"go/token"
 	"io"
-	mydoc "mygo/doc"
 	"os"
 	"path"
 	"strings"
@@ -82,7 +81,7 @@ func synopsis(s string) string {
 type builder struct {
 	fset     *token.FileSet
 	lineFmt  string
-	examples []*mydoc.Example
+	examples []*goExample
 }
 
 func (b *builder) printNode(decl interface{}) string {
@@ -293,7 +292,7 @@ func Build(importPath string, lineFmt string, files []Source) (*Package, os.Erro
 			continue
 		}
 		if src, err := parser.ParseFile(b.fset, f.URL, f.Content, parser.ParseComments); err == nil {
-			for _, e := range mydoc.Examples(&ast.Package{src.Name.Name, nil, nil, map[string]*ast.File{f.URL: src}}) {
+			for _, e := range goExamples(&ast.Package{src.Name.Name, nil, nil, map[string]*ast.File{f.URL: src}}) {
 				if i := strings.LastIndex(e.Name, "_"); i >= 0 {
 					if i < len(e.Name)-1 && !startsWithUppercase(e.Name[i+1:]) {
 						e.Name = e.Name[:i]
