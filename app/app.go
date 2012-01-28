@@ -270,14 +270,29 @@ func servePackages(w http.ResponseWriter, r *http.Request) os.Error {
 }
 
 func importPathFromGoogleBrowse(m []string) string {
-	dir, err := url.QueryUnescape(m[2])
-	if err != nil {
-		return m[0]
+	project := m[1]
+	dir := m[2]
+	if dir == "" {
+		dir = "/"
+	} else if dir[len(dir)-1] == '/' {
+		dir = dir[:len(dir)-1]
 	}
-	if i := strings.IndexRune(dir, '%'); i >= 0 {
-		dir = dir[:i]
+	subrepo := ""
+	if len(m[3]) > 0 {
+		v, _ := url.ParseQuery(m[3][1:])
+		subrepo = v.Get("repo")
+		if len(subrepo) > 0 {
+			subrepo = "." + subrepo
+		}
 	}
-	return "code.google.com/p/" + m[1] + dir
+	if strings.HasPrefix(m[4], "#hg%2F") {
+		d, _ := url.QueryUnescape(m[4][len("#hg%2f"):])
+		if i := strings.IndexRune(d, '%'); i >= 0 {
+			d = d[:i]
+		}
+		dir = dir + "/" + d
+	}
+	return "code.google.com/p/" + project + subrepo + dir
 }
 
 var oldGooglePattern = regexp.MustCompile(`^([a-z0-9\-]+)\.googlecode\.com/(svn|git|hg)(/[a-z0-9A-Z_.\-/]+)?$`)
@@ -299,7 +314,7 @@ var importPathCleaners = []struct {
 		func(m []string) string { return fmt.Sprintf("bitbucket.org/%s/%s/%s", m[1], m[2], m[3]) },
 	},
 	{
-		regexp.MustCompile(`^http:/+code.google.com/p/([^/]+)/source/browse/#hg(.*)$`),
+		regexp.MustCompile(`^http:/+code\.google\.com/p/([^/]+)/source/browse(/[^?#]*)?(\?[^#]*)?(#.*)?$`),
 		importPathFromGoogleBrowse,
 	},
 	{
@@ -391,7 +406,8 @@ func redirectQuery(w http.ResponseWriter, r *http.Request) {
 }
 
 func serveAbout(w http.ResponseWriter, r *http.Request) os.Error {
-	return executeTemplate(w, "about.html", 200, nil)
+	return executeTemplate(w, "about.html", 200,
+		map[string]interface{}{"Host": r.Host})
 }
 
 func serveGithbHook(w http.ResponseWriter, r *http.Request) {

@@ -94,6 +94,10 @@ func (b *builder) printNode(decl interface{}) string {
 	return buf.String()
 }
 
+func (b *builder) printFunc(decl *ast.FuncDecl) string {
+	return b.printNode(decl)
+}
+
 func (b *builder) printPos(pos token.Pos) string {
 	position := b.fset.Position(pos)
 	return position.Filename + fmt.Sprintf(b.lineFmt, position.Line)
@@ -161,7 +165,7 @@ func (b *builder) funcs(fdocs []*doc.FuncDoc) []*Func {
 		}
 
 		result = append(result, &Func{
-			Decl:     b.printNode(d.Decl),
+			Decl:     b.printFunc(d.Decl),
 			URL:      b.printPos(d.Decl.Pos()),
 			Doc:      d.Doc,
 			Name:     d.Name,
