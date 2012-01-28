@@ -3,51 +3,21 @@
 <html lang="en">
 <head>
   {{template "CommonHead"}}
-  <style type="text/css">body { padding-top: 30px; } </style>
   <title>GoPkgDoc</title>
 </head>
 
 <body>
+  {{template "NavBar" "home"}}
   <div class="container">
-
-    {{if .importPath}}<div class="alert-message block-message error">
-      <p>Oh snap! Our team of gophers could not find a package with import path "{{.importPath|html}}".  
-      {{if .oneDidYouMean}}
-        Did you mean <a href="/pkg/{{index .didYouMean 0|html}}">{{index .didYouMean 0|html}}</a>?
-      {{else}}{{if .didYouMean}}
-        <p>Did you mean: <ul>{{range .didYouMean}}<li><a href="/pkg/{{.|html}}">{{.|html}}</a>{{end}}</ul><p>
-      {{else}}
-        Check the spelling and try again. 
-      {{end}}{{end}}
-    </div>{{end}}
-
-    <div class="hero-unit">
-      <h1>GoPkgDoc</h1>
-      <p>GoPkgDoc displays documentation for Go packages on Bitbucket, Github, Launchpad and Google Project Hosting.
-      <div class="row">
-        <form class="form-stacked" action="/" method="GET">
-           <div class="clearfix">
-              <div class="input">
-                <input type="text" class="span6" id="q" name="q" value="{{.importPath|html}}" placeholder="Package import path"/>
-                <button type="submit" class="btn primary">Go</button>
-              </div>
-            </div>
+    <div class="row">
+      <div class="hero-unit span8">
+        <p>GoPkgDoc displays documentation for Go packages on Bitbucket, Github, Launchpad and Google Project Hosting.
+        <form class="form-inline">
+          <input type="text" class="span6" id="q" name="q" value="{{.importPath|html}}" placeholder="Package import path"/>
+          <button type="submit" class="btn primary">Go</button>
         </form>
       </div>
-    </div>
-
-    <p>File an <a href="https://github.com/garyburd/gopkgdoc/issues/new">issue</a> to report bugs or suggest improvements. 
-    The <a href="https://github.com/garyburd/gopkgdoc">source</a> for this site is hosted on Github.  
-    <a href="http://help.github.com/send-pull-requests/">Pull requests</a> are welcomed.
-
-    <p>The GoPkgDoc bookmarklet navigates from pages on Bitbucket, Github
-    Launchpad and Google Project Hosting to the package documentation. To
-    install the bookmarklet, click and drag the following link to your bookmark
-    bar: 
-    <a href="javascript:window.location='http://{{.Host|html}}/?q='+encodeURIComponent(window.location)">GoPkgDoc</a>
-
-    <p>GoPkgDoc keeps a <a href="/pkg/">list of the packages</a> viewed on this site.
-
+  </div>
   </div>
 </body>
 </html>

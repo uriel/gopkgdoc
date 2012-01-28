@@ -2,8 +2,37 @@
 <meta charset="utf-8">
 <link href="{{staticURL "/static/bootstrap.css"}}" rel="stylesheet">
 <style type="text/css">
-    .container { width: 820px; }
-    .page-header { padding-top: 10px; }
-    code { background-color: white; }
+code { 
+  background-color: white; 
+  border: none; 
+  color: inherit; 
+  padding: 0;
+}
+.page-header {
+  background-color: #f5f5f5; 
+  margin: -18px 0 10px 0;
+  padding: 10px 0 10px 0;
+  border-bottom:  1px solid #ddd;
+}
+.page-footer {
+  margin: 8px 0 0 0;
+  padding: 12px 0 8px 0;
+  border-top:  1px solid #ddd;
+}
 </style>
+{{end}}
+
+{{define "NavBar"}}
+<div class="navbar navbar-static">
+  <div class="navbar-inner">
+    <div class="container">
+      <a class="brand" href="/">GoPkgDoc</a>
+      <ul class="nav">
+        <li{{if equal . "home"}} class="active"{{end}}><a href="/">Home</a></li>
+        <li{{if equal . "packages"}} class="active"{{end}}><a href="/packages">Packages</a></li>
+        <li{{if equal . "about"}} class="active"{{end}}><a href="/about">About</a></li>
+      </ul>
+    </div>
+  </div>
+</div>
 {{end}}

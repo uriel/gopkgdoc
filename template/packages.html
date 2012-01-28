@@ -1,4 +1,4 @@
-{{define "pkgList.html"}}
+{{define "packages.html"}}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,9 +8,11 @@
 
 <body>
 
+{{template "NavBar" "packages"}}
+
 <div class="page-header">
   <div class="container">
-    <h1><a href="/">GoPkgDoc</a>: Packages</h1>
+    <h1>Packages</h1>
   </div>
 </div>
 
@@ -18,7 +20,7 @@
 
 <p>This list is updated automatically when packages are viewed on GoPkgDoc.
 
-<table class="condensed-table">
+<table class="table">
   <thead><tr><th>Import Path</th><th>Synopsis</th></thead>
   <tbody>
     {{range .Packages}}
@@ -30,13 +32,13 @@
   </tbody>
 </table>
 
+<div class="page-footer">
+  <p class="pull-right"><a href="#">Back to top</a></p>
+  <p>GoPkgDoc generated this page {{.Updated|relativeTime}}. Number of packages: {{len .Packages}}
 </div>
 
-<footer>
-  <div class="container">
-    <p><a href="/">GoPkgDoc</a> generated this page {{.Updated|relativeTime}}. Number of packages: {{len .Packages}}
-  </div>
-</footer>
+</div>
+
 </body>
 </html>
 {{end}}

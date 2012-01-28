@@ -1,4 +1,4 @@
-{{define "pkgNotFound.html"}}
+{{define "search.html"}}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,9 +8,11 @@
 
 <body>
 
+{{template "NavBar" "home"}}
+
 <div class="page-header">
   <div class="container">
-    <h1><a href="/">GoPkgDoc</a> <small>Not Found</small></h1>
+    <h1>Not Found</h1>
   </div>
 </div>
 
@@ -22,16 +24,10 @@
 
 <p>Check the import path and try again.
 
-<div class="row">
-  <form class="form-stacked" action="/" method="GET">
-     <div class="clearfix">
-        <div class="input">
-          <input type="text" class="span6" id="q" name="q" value="{{.importPath|html}}" placeholder="Package import path"/>
-          <button type="submit" class="btn primary">Go</button>
-        </div>
-      </div>
-  </form>
-</div>
+<form class="form-inline">
+  <input type="text" class="span6" id="q" name="q" value="{{.importPath|html}}" placeholder="Package import path"/>
+  <button type="submit" class="btn primary">Go</button>
+</form>
 
 </div>
 </body>

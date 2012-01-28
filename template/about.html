@@ -1,0 +1,46 @@
+{{define "about.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  {{template "CommonHead"}}
+  <title>GoPkgDoc: About</title>
+</head>
+
+<body>
+  {{template "NavBar" "about"}}
+
+<div class="container">
+
+  <div class="row">
+    <div class="span4">
+      <h4>About</h4> <p>GoPkgDoc displays documentation for Go packages on
+      Bitbucket, Github, Launchpad and Google Project Hosting.  <p>The GoPkgDoc
+      source code is <a href="https://github.com/garyburd/gopkgdoc">hosted on
+        Github</a>.  
+    </div>
+
+    <div class="span4">
+      <h4>Feedback</h4>
+      <p>Send your ideas, feature requests and questions to the author via <a
+        href="https://github.com/inbox/new?to=garyburd">Github</a> or <a
+        href="http://www.google.com/profiles/100190655365702878730/contactme">Google
+        Profiles</a>. Report bugs using the <a
+        href="https://github.com/garyburd/gopkgdoc/issues/new">Github Issue
+        Tracker</a>.
+    </div>
+
+    <div class="span4">
+      <h4>Bookmarklet</h4>
+      <p>The GoPkgDoc bookmarklet navigates from pages on Bitbucket, Github
+      Launchpad and Google Project Hosting to the package documentation. To
+      install the bookmarklet, click and drag the following link to your bookmark
+      bar: 
+      <a href="javascript:window.location='http://{{.Host|html}}/?q='+encodeURIComponent(window.location)">GoPkgDoc</a>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
+{{end}}

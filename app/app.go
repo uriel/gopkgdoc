@@ -23,6 +23,7 @@ import (
 	"doc"
 	"encoding/hex"
 	"fmt"
+	"reflect"
 	"http"
 	"io/ioutil"
 	"os"
@@ -166,6 +167,7 @@ var fmap = template.FuncMap{
 	"comment":      commentFmt,
 	"relativeTime": relativeTime,
 	"staticURL":    staticURL,
+	"equal":        reflect.DeepEqual,
 }
 
 var templates template.Set
@@ -193,12 +195,12 @@ func (f handlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func servePkg(w http.ResponseWriter, r *http.Request) os.Error {
+func servePackage(w http.ResponseWriter, r *http.Request) os.Error {
 	c := appengine.NewContext(r)
 
 	path := path.Clean(r.URL.Path)
 	if path == "/pkg" {
-		return servePackageList(w, r)
+		return executeTemplate(w, "notfound.html", 404, nil)
 	}
 	if path != r.URL.Path {
 		http.Redirect(w, r, path, 301)
@@ -224,7 +226,7 @@ func servePkg(w http.ResponseWriter, r *http.Request) os.Error {
 	return executeTemplate(w, "pkg.html", 200, pdoc)
 }
 
-func servePackageList(w http.ResponseWriter, r *http.Request) os.Error {
+func servePackages(w http.ResponseWriter, r *http.Request) os.Error {
 	c := appengine.NewContext(r)
 
 	var pkgList struct {
@@ -264,7 +266,7 @@ func servePackageList(w http.ResponseWriter, r *http.Request) os.Error {
 		return nil
 	}
 
-	return executeTemplate(w, "pkgList.html", 200, &pkgList)
+	return executeTemplate(w, "packages.html", 200, &pkgList)
 }
 
 func importPathFromGoogleBrowse(m []string) string {
@@ -380,12 +382,16 @@ func serveHome(w http.ResponseWriter, r *http.Request) os.Error {
 		importPaths = append(importPaths, <-resultChan...)
 	}
 
-	return executeTemplate(w, "pkgNotFound.html", 200,
+	return executeTemplate(w, "search.html", 200,
 		map[string]interface{}{"importPath": importPath, "didYouMean": importPaths})
 }
 
 func redirectQuery(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/?q="+url.QueryEscape(r.URL.Path), 301)
+}
+
+func serveAbout(w http.ResponseWriter, r *http.Request) os.Error {
+	return executeTemplate(w, "about.html", 200, nil)
 }
 
 func serveGithbHook(w http.ResponseWriter, r *http.Request) {
@@ -395,7 +401,9 @@ func init() {
 	template.SetMust(templates.Funcs(fmap).ParseGlob("template/*.html"))
 
 	http.Handle("/", handlerFunc(serveHome))
-	http.Handle("/pkg/", handlerFunc(servePkg))
+	http.Handle("/about", handlerFunc(serveAbout))
+	http.Handle("/packages", handlerFunc(servePackages))
+	http.Handle("/pkg/", handlerFunc(servePackage))
 	http.HandleFunc("/bitbucket.org/", redirectQuery)
 	http.HandleFunc("/github.com/", redirectQuery)
 	http.HandleFunc("/code.google.com/", redirectQuery)
