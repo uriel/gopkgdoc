@@ -37,7 +37,7 @@ func ToHTML(w io.Writer, s []byte) {
 	doc.ToHTML(w, s, nil)
 }
 
-func UseFile(p string) bool {
+func IsGoFile(p string) bool {
 	_, f := path.Split(p)
 	return strings.HasSuffix(f, ".go") &&
 		len(f) > 0 &&
@@ -52,30 +52,38 @@ func startsWithUppercase(s string) bool {
 }
 
 func synopsis(s string) string {
-	// Split off first paragraph.
-	if parts := strings.SplitN(s, "\n\n", 2); len(parts) > 1 {
-		s = parts[0]
-	}
-
-	// Find first sentence.
-	prev := 'A'
-	for i, ch := range s {
-		if (ch == '.' || ch == '!' || ch == '?') &&
-			i+1 < len(s) &&
-			(s[i+1] == ' ' || s[i+1] == '\n') &&
-			!unicode.IsUpper(prev) {
-			s = s[:i+1]
-			break
+	var buf []byte
+	const (
+		other = iota
+		period
+		space
+	)
+	last := space
+Loop:
+	for i := 0; i < len(s); i++ {
+		b := s[i]
+		switch b {
+		case ' ', '\t', '\r', '\n':
+			switch last {
+			case period:
+				break Loop
+			case other:
+				buf = append(buf, ' ')
+				last = space
+			}
+		case '.':
+			last = period
+			buf = append(buf, b)
+		default:
+			last = other
+			buf = append(buf, b)
 		}
-		prev = ch
 	}
-
 	// Ensure that synopsis fits in datastore text property.
-	if len(s) > 400 {
-		s = s[:400]
+	if len(buf) > 400 {
+		buf = buf[:400]
 	}
-
-	return s
+	return string(buf)
 }
 
 type builder struct {
@@ -226,16 +234,18 @@ func (b *builder) files(urls []string) []*File {
 type Package struct {
 	Consts      []*Value
 	Doc         string
-	Synopsis    string
 	Files       []*File
 	Funcs       []*Func
+	Hide        bool
 	ImportPath  string
+	IsCmd       bool
 	Name        string
+	ProjectName string
+	ProjectURL  string
+	Synopsis    string
 	Types       []*Type
 	Updated     int64
 	Vars        []*Value
-	ProjectURL  string
-	ProjectName string
 }
 
 type Source struct {
@@ -253,66 +263,104 @@ func Build(importPath string, lineFmt string, files []Source) (*Package, os.Erro
 		fset:    token.NewFileSet(),
 	}
 
-	pkgs := make(map[string]*ast.Package)
+	pasts := make(map[string]*ast.Package)
 	for _, f := range files {
 		if strings.HasSuffix(f.URL, "_test.go") {
 			continue
 		}
-		if src, err := parser.ParseFile(b.fset, f.URL, f.Content, parser.ParseComments); err == nil {
-			name := src.Name.Name
-			pkg, found := pkgs[name]
+		if fast, err := parser.ParseFile(b.fset, f.URL, f.Content, parser.ParseComments); err == nil {
+			name := fast.Name.Name
+			past, found := pasts[name]
 			if !found {
-				pkg = &ast.Package{name, nil, nil, make(map[string]*ast.File)}
-				pkgs[name] = pkg
+				past = &ast.Package{name, nil, nil, make(map[string]*ast.File)}
+				pasts[name] = past
 			}
-			pkg.Files[f.URL] = src
+			past.Files[f.URL] = fast
 		}
 	}
-	var pkg *ast.Package
+	var past *ast.Package
 	score := 0
-	for _, p := range pkgs {
+	for _, p := range pasts {
 		switch {
 		case score < 3 && strings.HasSuffix(importPath, p.Name):
-			pkg = p
+			past = p
 			score = 3
 		case score < 2 && p.Name != "main":
-			pkg = p
+			past = p
 			score = 2
 		case score < 1:
-			pkg = p
+			past = p
 			score = 1
 		}
 	}
 
-	if pkg == nil {
+	if past == nil {
 		return nil, ErrPackageNotFound
 	}
 
-	ast.PackageExports(pkg)
-	pdoc := doc.NewPackageDoc(pkg, importPath)
+	// Determine if the directory contains a function that can be used as an
+	// application main function. This check must be done before the AST is 
+	// filtred by the call to ast.PackageExports below.
+	hasApplicationMain := false
+	if past, ok := pasts["main"]; ok {
+	MainCheck:
+		for _, fast := range past.Files {
+			for _, d := range fast.Decls {
+				if f, ok := d.(*ast.FuncDecl); ok && f.Name.Name == "main" {
+					hasApplicationMain = (f.Type.Params == nil || len(f.Type.Params.List) == 0) &&
+						(f.Type.Results == nil || len(f.Type.Results.List) == 0)
+					break MainCheck
+				}
+			}
+		}
+	}
+
+	ast.PackageExports(past)
+	pdoc := doc.NewPackageDoc(past, importPath)
 
 	for _, f := range files {
 		if !strings.HasSuffix(f.URL, "_test.go") {
 			continue
 		}
-		if src, err := parser.ParseFile(b.fset, f.URL, f.Content, parser.ParseComments); err == nil {
-			for _, e := range goExamples(&ast.Package{src.Name.Name, nil, nil, map[string]*ast.File{f.URL: src}}) {
-				if i := strings.LastIndex(e.Name, "_"); i >= 0 {
-					if i < len(e.Name)-1 && !startsWithUppercase(e.Name[i+1:]) {
-						e.Name = e.Name[:i]
-					}
+		fast, err := parser.ParseFile(b.fset, f.URL, f.Content, parser.ParseComments)
+		if err != nil || fast.Name.Name != pdoc.PackageName {
+			continue
+		}
+		for _, e := range goExamples(&ast.Package{fast.Name.Name, nil, nil, map[string]*ast.File{f.URL: fast}}) {
+			if i := strings.LastIndex(e.Name, "_"); i >= 0 {
+				if i < len(e.Name)-1 && !startsWithUppercase(e.Name[i+1:]) {
+					e.Name = e.Name[:i]
 				}
-				b.examples = append(b.examples, e)
 			}
+			b.examples = append(b.examples, e)
 		}
 	}
+
+	noExports := len(pdoc.Consts) == 0 &&
+		len(pdoc.Funcs) == 0 &&
+		len(pdoc.Types) == 0 &&
+		len(pdoc.Vars) == 0
+
+	var isCmd bool
+	if pdoc.PackageName == "documentation" &&
+		len(pdoc.Filenames) == 1 &&
+		strings.HasSuffix(pdoc.Filenames[0], "/doc.go") &&
+		noExports &&
+		hasApplicationMain {
+		isCmd = true
+		pdoc.PackageName = path.Base(importPath)
+	}
+
+	hide := (pdoc.PackageName == "main" && hasApplicationMain) || (noExports && !isCmd)
 
 	return &Package{
 		Consts:     b.values(pdoc.Consts),
 		Doc:        pdoc.Doc,
 		Files:      b.files(pdoc.Filenames),
 		Funcs:      b.funcs(pdoc.Funcs),
+		Hide:       hide,
 		ImportPath: pdoc.ImportPath,
+		IsCmd:      isCmd,
 		Name:       pdoc.PackageName,
 		Synopsis:   synopsis(pdoc.Doc),
 		Types:      b.types(pdoc.Types),

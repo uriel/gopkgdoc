@@ -23,12 +23,13 @@ import (
 	"doc"
 	"encoding/hex"
 	"fmt"
-	"reflect"
 	"http"
 	"io/ioutil"
 	"os"
 	"path"
+	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"template"
@@ -37,11 +38,11 @@ import (
 )
 
 type Package struct {
-	ImportPath   string `datastore:"-"`
-	Synopsis     string `datastore:",noindex"`
-	PackageName  string `datastore:",noindex"`
-	IndexTokens  []string
-	RelatedPaths []string
+	ImportPath  string `datastore:"-"`
+	Synopsis    string `datastore:",noindex"`
+	PackageName string `datastore:",noindex"`
+	Hide        bool
+	IndexTokens []string
 }
 
 var hosts = []struct {
@@ -104,6 +105,7 @@ func getDoc(c appengine.Context, importPath string) (*doc.Package, []string, os.
 					&Package{
 						Synopsis:    pdoc.Synopsis,
 						PackageName: pdoc.Name,
+						Hide:        pdoc.Hide,
 						IndexTokens: indexTokens,
 					}); err != nil {
 					c.Errorf("Put(%s) -> %v", importPath, err)
@@ -238,7 +240,7 @@ func servePackages(w http.ResponseWriter, r *http.Request) os.Error {
 	err := cacheGet(c, cacheKey, &pkgList)
 	switch err {
 	case memcache.ErrCacheMiss:
-		keys, err := datastore.NewQuery("Package").GetAll(c, &pkgList.Packages)
+		keys, err := datastore.NewQuery("Package").Filter("Hide=", false).GetAll(c, &pkgList.Packages)
 		if err != nil {
 			return err
 		}
@@ -255,18 +257,24 @@ func servePackages(w http.ResponseWriter, r *http.Request) os.Error {
 		return err
 	}
 
-	if r.FormValue("text") != "" {
-		var buf bytes.Buffer
-		for _, pkg := range pkgList.Packages {
-			buf.WriteString(pkg.ImportPath)
-			buf.WriteByte('\n')
-		}
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Write(buf.Bytes())
-		return nil
-	}
-
 	return executeTemplate(w, "packages.html", 200, &pkgList)
+}
+
+func serveAPIPackages(w http.ResponseWriter, r *http.Request) os.Error {
+	c := appengine.NewContext(r)
+	keys, err := datastore.NewQuery("Package").KeysOnly().GetAll(c, nil)
+	if err != nil {
+		return err
+	}
+	var buf bytes.Buffer
+	for _, key := range keys {
+		buf.WriteString(key.StringID())
+		buf.WriteByte('\n')
+	}
+	w.Header().Set("Content-Length", strconv.Itoa(buf.Len()))
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, err = w.Write(buf.Bytes())
+	return err
 }
 
 func importPathFromGoogleBrowse(m []string) string {
@@ -420,6 +428,7 @@ func init() {
 	http.Handle("/about", handlerFunc(serveAbout))
 	http.Handle("/packages", handlerFunc(servePackages))
 	http.Handle("/pkg/", handlerFunc(servePackage))
+	http.Handle("/api/packages", handlerFunc(serveAPIPackages))
 	http.HandleFunc("/bitbucket.org/", redirectQuery)
 	http.HandleFunc("/github.com/", redirectQuery)
 	http.HandleFunc("/code.google.com/", redirectQuery)

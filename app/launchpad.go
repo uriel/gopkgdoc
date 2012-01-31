@@ -77,7 +77,7 @@ func getLaunchpadDoc(c appengine.Context, match []string) (*doc.Package, os.Erro
 		if d != dir {
 			continue
 		}
-		if !doc.UseFile(f) {
+		if !doc.IsGoFile(f) {
 			continue
 		}
 		b, err := ioutil.ReadAll(tr)

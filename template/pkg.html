@@ -17,6 +17,10 @@
 </div>
 
 <div class="container">
+{{if .IsCmd}}
+  <h2>Command {{.Name|html}}</h2>
+  {{.Doc|comment}}
+{{else}}
 
 <h2>package {{.Name|html}}</h2>
 
@@ -87,6 +91,8 @@
 <p><code>{{.Decl|html}}</code></p>
 {{.Doc|comment}}
 {{template "Examples" .}}
+{{end}}
+
 {{end}}
 
 {{end}}

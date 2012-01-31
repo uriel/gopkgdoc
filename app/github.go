@@ -110,7 +110,7 @@ func getGithubBlobs(c appengine.Context, userRepo string) ([]gitBlob, os.Error) 
 		return nil, err
 	}
 	for _, node := range tree.Tree {
-		if node.Type == "blob" && doc.UseFile(node.Path) {
+		if node.Type == "blob" && doc.IsGoFile(node.Path) {
 			blobs = append(blobs, gitBlob{Path: node.Path, Url: node.Url})
 		}
 	}
