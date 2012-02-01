@@ -69,6 +69,7 @@ func getGithubDoc(c appengine.Context, match []string) (*doc.Package, os.Error) 
 		d, f := path.Split(blob.Path)
 		if d == dir {
 			files = append(files, doc.Source{
+				f,
 				"https://github.com/" + userRepo + "/blob/master/" + dir + f,
 				newAsyncReader(c, blob.Url, githubRawHeader)})
 		}

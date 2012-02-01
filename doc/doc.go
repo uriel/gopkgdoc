@@ -97,6 +97,7 @@ type builder struct {
 	buf         bytes.Buffer // scratch space for printNode method.
 	importPaths map[string]map[string]string
 	pkg         *ast.Package
+	urls        map[string]string
 }
 
 func (b *builder) fileImportPaths(filename string) map[string]string {
@@ -251,7 +252,7 @@ func (b *builder) printNode(node interface{}) string {
 
 func (b *builder) printPos(pos token.Pos) string {
 	position := b.fset.Position(pos)
-	return position.Filename + fmt.Sprintf(b.lineFmt, position.Line)
+	return b.urls[position.Filename] + fmt.Sprintf(b.lineFmt, position.Line)
 }
 
 type Value struct {
@@ -362,13 +363,13 @@ type File struct {
 	URL  string
 }
 
-func (b *builder) files(urls []string) []*File {
+func (b *builder) files(filenames []string) []*File {
 	var result []*File
-	for _, url := range urls {
-		_, name := path.Split(url)
+	for _, f := range filenames {
+		_, name := path.Split(f)
 		result = append(result, &File{
 			Name: name,
-			URL:  url,
+			URL:  b.urls[f],
 		})
 	}
 	return result
@@ -392,8 +393,9 @@ type Package struct {
 }
 
 type Source struct {
-	URL     string
-	Content interface{}
+	Filename string
+	URL      string
+	Content  interface{}
 }
 
 func Build(importPath string, lineFmt string, files []Source) (*Package, os.Error) {
@@ -405,21 +407,23 @@ func Build(importPath string, lineFmt string, files []Source) (*Package, os.Erro
 		lineFmt:     lineFmt,
 		fset:        token.NewFileSet(),
 		importPaths: make(map[string]map[string]string),
+		urls:        make(map[string]string),
 	}
 
 	pkgs := make(map[string]*ast.Package)
 	for _, f := range files {
-		if strings.HasSuffix(f.URL, "_test.go") {
+		b.urls[f.Filename] = f.URL
+		if strings.HasSuffix(f.Filename, "_test.go") {
 			continue
 		}
-		if src, err := parser.ParseFile(b.fset, f.URL, f.Content, parser.ParseComments); err == nil {
+		if src, err := parser.ParseFile(b.fset, f.Filename, f.Content, parser.ParseComments); err == nil {
 			name := src.Name.Name
 			pkg, found := pkgs[name]
 			if !found {
 				pkg = &ast.Package{name, nil, nil, make(map[string]*ast.File)}
 				pkgs[name] = pkg
 			}
-			pkg.Files[f.URL] = src
+			pkg.Files[f.Filename] = src
 		}
 	}
 	score := 0
@@ -463,14 +467,14 @@ func Build(importPath string, lineFmt string, files []Source) (*Package, os.Erro
 
 	// Collect examples.
 	for _, f := range files {
-		if !strings.HasSuffix(f.URL, "_test.go") {
+		if !strings.HasSuffix(f.Filename, "_test.go") {
 			continue
 		}
-		src, err := parser.ParseFile(b.fset, f.URL, f.Content, parser.ParseComments)
+		src, err := parser.ParseFile(b.fset, f.Filename, f.Content, parser.ParseComments)
 		if err != nil || src.Name.Name != pdoc.PackageName {
 			continue
 		}
-		for _, e := range goExamples(&ast.Package{src.Name.Name, nil, nil, map[string]*ast.File{f.URL: src}}) {
+		for _, e := range goExamples(&ast.Package{src.Name.Name, nil, nil, map[string]*ast.File{f.Filename: src}}) {
 			if i := strings.LastIndex(e.Name, "_"); i >= 0 {
 				if i < len(e.Name)-1 && !startsWithUppercase(e.Name[i+1:]) {
 					e.Name = e.Name[:i]
@@ -488,7 +492,7 @@ func Build(importPath string, lineFmt string, files []Source) (*Package, os.Erro
 	var isCmd bool
 	if pdoc.PackageName == "documentation" &&
 		len(pdoc.Filenames) == 1 &&
-		strings.HasSuffix(pdoc.Filenames[0], "/doc.go") &&
+		path.Base(pdoc.Filenames[0]) == "doc.go" &&
 		noExports &&
 		hasApplicationMain {
 		isCmd = true

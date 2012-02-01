@@ -70,6 +70,7 @@ func getGoogleDoc(c appengine.Context, match []string) (*doc.Package, os.Error) 
 		fname := string(m[1])
 		if doc.IsGoFile(fname) {
 			files = append(files, doc.Source{
+				fname,
 				"http://code.google.com/p/" + projectName + "/source/browse/" + dir + fname + query,
 				newAsyncReader(c, "http://"+subrepo+projectName+".googlecode.com/"+vcs+"/"+dir+fname, nil)})
 		}

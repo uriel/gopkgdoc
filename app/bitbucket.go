@@ -59,6 +59,7 @@ func getBitbucketDoc(c appengine.Context, match []string) (*doc.Package, os.Erro
 	for _, f := range directory.Files {
 		if doc.IsGoFile(f.Path) {
 			files = append(files, doc.Source{
+				f.Path,
 				"https://bitbucket.org/" + userName + "/" + repoName + "/src/tip/" + f.Path,
 				newAsyncReader(c, "https://api.bitbucket.org/1.0/repositories/"+userName+"/"+repoName+"/raw/tip/"+f.Path, nil)})
 		}

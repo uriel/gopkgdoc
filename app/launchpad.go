@@ -85,6 +85,7 @@ func getLaunchpadDoc(c appengine.Context, match []string) (*doc.Package, os.Erro
 			return nil, err
 		}
 		files = append(files, doc.Source{
+			f,
 			"http://bazaar.launchpad.net/+branch/" + repo + "/view/head:/" + hdr.Name[len(prefix):],
 			b})
 	}
