@@ -40,12 +40,12 @@
 <li><a href="#files">Package Files</a>
 {{if .Consts}}<li><a href="#constants">Constants</a>{{end}}
 {{if .Vars}}<li><a href="#variables">Variables</a>{{end}}
-{{range .Funcs}}<li><a href="#{{.Name}}" title="{{.Decl|html}}">func {{.Name|html}}</a>{{end}}
+{{range .Funcs}}<li><a href="#{{.Name}}" title="{{.Decl.Text|html}}">func {{.Name|html}}</a>{{end}}
 {{range $t := .Types}}
 <li><a href="#{{.Name|html}}">type {{.Name|html}}</a>
     {{if or .Factories .Methods}}<ul>{{end}}
-      {{range .Factories}}<li><a href="#{{.Name|html}}" title="{{.Decl|html}}">func {{.Name|html}}</a>{{end}}
-      {{range .Methods}}<li><a href="#{{$t.Name|html}}.{{.Name|html}}" title="{{.Decl|html}}">func ({{.Recv|html}}) {{.Name|html}}</a>{{end}}
+      {{range .Factories}}<li><a href="#{{.Name|html}}" title="{{.Decl.Text|html}}">func {{.Name|html}}</a>{{end}}
+      {{range .Methods}}<li><a href="#{{$t.Name|html}}.{{.Name|html}}" title="{{.Decl.Text|html}}">func ({{.Recv|html}}) {{.Name|html}}</a>{{end}}
     {{if or .Factories .Methods}}</ul>{{end}}
 {{end}}
 </ul>
@@ -56,17 +56,17 @@
 
 {{if .Consts}}
 <h3 id="constants">Constants</h3>
-{{range .Consts}}{{.Doc|comment}}<pre>{{.Decl|html}}</pre>{{end}}
+{{range .Consts}}{{.Doc|comment}}<pre>{{.Decl|decl}}</pre>{{end}}
 {{end}}
 
 {{if .Vars}}
 <h3 id="variables">Variables</h3>
-{{range .Vars}}{{.Doc|comment}}<pre>{{.Decl|html}}</pre>{{end}}
+{{range .Vars}}{{.Doc|comment}}<pre>{{.Decl|decl}}</pre>{{end}}
 {{end}}
 
 {{range .Funcs}}
 <h3 id="{{.Name|html}}">func <a href="{{.URL|html}}">{{.Name|html}}</a></h3>
-<p><code>{{.Decl|html}}</code></p>
+<p><code>{{.Decl|decl}}</code></p>
 {{.Doc|comment}}
 {{template "Examples" .}}
 {{end}}
@@ -74,21 +74,21 @@
 {{range $t := .Types}}
 <h3 id="{{.Name|html}}">type <a href="{{.URL|html}}">{{.Name|html}}</a></h3>
 {{.Doc|comment}}
-<pre>{{.Decl|html}}</pre>
-{{range .Consts}}{{.Doc|comment}}<pre>{{.Decl|html}}</pre>{{end}}
-{{range .Vars}}{{.Doc|comment}}<pre>{{.Decl|html}}</pre>{{end}}
+<pre>{{.Decl|decl}}</pre>
+{{range .Consts}}{{.Doc|comment}}<pre>{{.Decl|decl}}</pre>{{end}}
+{{range .Vars}}{{.Doc|comment}}<pre>{{.Decl|decl}}</pre>{{end}}
 {{template "Examples" .}}
 
 {{range .Factories}}
 <h4 id="{{.Name|html}}">func <a href="{{.URL|html}}">{{.Name|html}}</a></h4>
-<p><code>{{.Decl|html}}</code></p>
+<p><code>{{.Decl|decl}}</code></p>
 {{.Doc|comment}}
 {{template "Examples" .}}
 {{end}}
 
 {{range .Methods}}
 <h4 id="{{$t.Name|html}}.{{.Name|html}}">func ({{.Recv|html}}) <a href="{{.URL|html}}">{{.Name|html}}</a></h4>
-<p><code>{{.Decl|html}}</code></p>
+<p><code>{{.Decl|decl}}</code></p>
 {{.Doc|comment}}
 {{template "Examples" .}}
 {{end}}

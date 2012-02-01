@@ -45,15 +45,20 @@ type Package struct {
 	IndexTokens []string
 }
 
-var hosts = []struct {
+// service represents a source code control service.
+type service struct {
 	pattern        *regexp.Regexp
 	getDoc         func(appengine.Context, []string) (*doc.Package, os.Error)
 	getIndexTokens func([]string) []string
-}{
-	{gitPattern, getGithubDoc, getGithubIndexTokens},
-	{googlePattern, getGoogleDoc, getGoogleIndexTokens},
-	{bitbucketPattern, getBitbucketDoc, getBitbucketIndexTokens},
-	{launchpadPattern, getLaunchpadDoc, getLaunchpadIndexTokens},
+	prefix         string
+}
+
+// services is the list of source code control services handled by gopkgdoc.
+var services = []*service{
+	&service{gitPattern, getGithubDoc, getGithubIndexTokens, "github.com/"},
+	&service{googlePattern, getGoogleDoc, getGoogleIndexTokens, "code.google.com/"},
+	&service{bitbucketPattern, getBitbucketDoc, getBitbucketIndexTokens, "bitbucket.org/"},
+	&service{launchpadPattern, getLaunchpadDoc, getLaunchpadIndexTokens, "launchpad.net/"},
 }
 
 func canonicalizeTokens(tokens []string) []string {
@@ -78,24 +83,24 @@ func getDoc(c appengine.Context, importPath string) (*doc.Package, []string, os.
 		return nil, nil, err
 	}
 
-	for _, h := range hosts {
-		if m := h.pattern.FindStringSubmatch(importPath); m != nil {
+	for _, s := range services {
+		if m := s.pattern.FindStringSubmatch(importPath); m != nil {
 			c.Infof("Reading package %s", importPath)
-			pdoc, err = h.getDoc(c, m)
+			pdoc, err = s.getDoc(c, m)
 			switch {
 			case err == doc.ErrPackageNotFound:
 				if err := datastore.Delete(c,
 					datastore.NewKey(c, "Package", importPath, 0, nil)); err != datastore.ErrNoSuchEntity && err != nil {
 					c.Errorf("Delete(%s) -> %v", importPath, err)
 				}
-				return nil, canonicalizeTokens(h.getIndexTokens(m)), nil
+				return nil, canonicalizeTokens(s.getIndexTokens(m)), nil
 			case err != nil:
 				return nil, nil, err
 			default:
 				if err := cacheSet(c, cacheKey, pdoc, 3600); err != nil {
 					return nil, nil, err
 				}
-				indexTokens := h.getIndexTokens(m)
+				indexTokens := s.getIndexTokens(m)
 				if pdoc.Name != "main" {
 					indexTokens = append(indexTokens, pdoc.Name)
 				}
@@ -117,6 +122,8 @@ func getDoc(c appengine.Context, importPath string) (*doc.Package, []string, os.
 	return nil, canonicalizeTokens([]string{importPath}), nil
 }
 
+// relativeTime formats the time t in nanoseconds as a human readable relative
+// time.
 func relativeTime(t int64) string {
 	d := time.Seconds() - t
 	switch {
@@ -132,9 +139,52 @@ func relativeTime(t int64) string {
 	return fmt.Sprintf("%d minutes ago", d/60)
 }
 
+// commentFmt formats a source code control comment as HTML.
 func commentFmt(v string) string {
 	var buf bytes.Buffer
 	doc.ToHTML(&buf, []byte(v))
+	return buf.String()
+}
+
+// declFrmt formats a Decl as HTML.
+func declFmt(decl doc.Decl) string {
+	var buf bytes.Buffer
+	last := 0
+	t := []byte(decl.Text)
+	for _, a := range decl.Annotations {
+		p := a.ImportPath
+		var link bool
+		switch {
+		case standardPackages[p]:
+			p = standardPackagePath + p
+			link = true
+		case p == "":
+			link = true
+		default:
+			if m := oldGooglePattern.FindStringSubmatch(p); m != nil {
+				p = newGooglePath(m)
+			}
+			for _, s := range services {
+				if strings.HasPrefix(p, s.prefix) {
+					link = true
+					break
+				}
+			}
+			p = "/pkg/" + p
+		}
+		if link {
+			template.HTMLEscape(&buf, t[last:a.Pos])
+			buf.WriteString(`<a href="`)
+			template.HTMLEscape(&buf, []byte(p))
+			buf.WriteByte('#')
+			template.HTMLEscape(&buf, []byte(a.Name))
+			buf.WriteString(`">`)
+			template.HTMLEscape(&buf, t[a.Pos:a.End])
+			buf.WriteString(`</a>`)
+			last = a.End
+		}
+	}
+	template.HTMLEscape(&buf, t[last:])
 	return buf.String()
 }
 
@@ -167,6 +217,7 @@ func staticURL(path string) string {
 
 var fmap = template.FuncMap{
 	"comment":      commentFmt,
+	"decl":         declFmt,
 	"relativeTime": relativeTime,
 	"staticURL":    staticURL,
 	"equal":        reflect.DeepEqual,
@@ -366,8 +417,8 @@ func serveHome(w http.ResponseWriter, r *http.Request) os.Error {
 
 	// Logs show that people are looking for the standard pacakges. Help them
 	// out with a redirect to golang.org.
-	if isStandardPackage(c, importPath) {
-		http.Redirect(w, r, "http://golang.org/pkg/"+importPath, 302)
+	if standardPackages[importPath] {
+		http.Redirect(w, r, standardPackagePath+importPath, 302)
 		return nil
 	}
 
@@ -429,9 +480,10 @@ func init() {
 	http.Handle("/packages", handlerFunc(servePackages))
 	http.Handle("/pkg/", handlerFunc(servePackage))
 	http.Handle("/api/packages", handlerFunc(serveAPIPackages))
-	http.HandleFunc("/bitbucket.org/", redirectQuery)
-	http.HandleFunc("/github.com/", redirectQuery)
-	http.HandleFunc("/code.google.com/", redirectQuery)
+
+	for _, s := range services {
+		http.HandleFunc("/"+s.prefix, redirectQuery)
+	}
 
 	// To avoid errors, register handler for the previously documented Github
 	// post-receive hook. Consider clearing cache from the hook.
