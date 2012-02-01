@@ -25,6 +25,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -137,6 +138,12 @@ type Decl struct {
 	Annotations []TypeAnnotation
 }
 
+type sortByPos []TypeAnnotation
+
+func (p sortByPos) Len() int           { return len(p) }
+func (p sortByPos) Less(i, j int) bool { return p[i].Pos < p[j].Pos }
+func (p sortByPos) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+
 // annotationVisitor collects type annoations.
 type annotationVisitor struct {
 	annotations []TypeAnnotation
@@ -201,8 +208,8 @@ func (v *annotationVisitor) Visit(n ast.Node) ast.Visitor {
 const packageWrapper = "package p\n"
 
 func (v *annotationVisitor) addAnnoation(n ast.Node, packageName string, name string) {
-	pos := v.b.fset.Position(n.Pos())
-	end := v.b.fset.Position(n.End())
+	pos := v.fset.Position(n.Pos())
+	end := v.fset.Position(n.End())
 	importPath := ""
 	if packageName != "" {
 		importPath = v.importPaths[packageName]
@@ -233,10 +240,10 @@ func (b *builder) printDecl(decl ast.Node) Decl {
 	}
 	f, err := parser.ParseFile(v.fset, "", b.buf.Bytes(), 0)
 	if err != nil {
-		panic(err)
 		return Decl{Text: text}
 	}
 	ast.Walk(v, f)
+	sort.Sort(sortByPos(v.annotations))
 	return Decl{Text: text, Annotations: v.annotations}
 }
 
