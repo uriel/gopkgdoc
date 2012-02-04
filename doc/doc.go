@@ -16,6 +16,7 @@ package doc
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/doc"
@@ -23,20 +24,20 @@ import (
 	"go/printer"
 	"go/token"
 	"io"
-	"os"
+	mydoc "mygo/doc"
 	"path"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 	"unicode"
-	"utf8"
+	"unicode/utf8"
 )
 
-var ErrPackageNotFound = os.NewError("package not found")
+var ErrPackageNotFound = errors.New("package not found")
 
-func ToHTML(w io.Writer, s []byte) {
-	doc.ToHTML(w, s, nil)
+func ToHTML(w io.Writer, s string) {
+	mydoc.ToHTML(w, s, nil)
 }
 
 func IsGoFile(p string) bool {
@@ -94,7 +95,7 @@ Loop:
 type builder struct {
 	fset        *token.FileSet
 	lineFmt     string
-	examples    []*goExample
+	examples    []*doc.Example
 	buf         bytes.Buffer // scratch space for printNode method.
 	importPaths map[string]map[string]string
 	pkg         *ast.Package
@@ -227,9 +228,9 @@ func (v *annotationVisitor) addAnnoation(n ast.Node, packageName string, name st
 func (b *builder) printDecl(decl ast.Node) Decl {
 	b.buf.Reset()
 	b.buf.WriteString(packageWrapper)
-	_, err := (&printer.Config{Mode: printer.UseSpaces, Tabwidth: 4}).Fprint(&b.buf, b.fset, decl)
+	err := (&printer.Config{Mode: printer.UseSpaces, Tabwidth: 4}).Fprint(&b.buf, b.fset, decl)
 	if err != nil {
-		return Decl{Text: err.String()}
+		return Decl{Text: err.Error()}
 	}
 	text := string(b.buf.Bytes()[len(packageWrapper):])
 	position := b.fset.Position(decl.Pos())
@@ -249,10 +250,10 @@ func (b *builder) printDecl(decl ast.Node) Decl {
 
 func (b *builder) printNode(node interface{}) string {
 	b.buf.Reset()
-	_, err := (&printer.Config{Mode: printer.UseSpaces, Tabwidth: 4}).Fprint(&b.buf, b.fset, node)
+	err := (&printer.Config{Mode: printer.UseSpaces, Tabwidth: 4}).Fprint(&b.buf, b.fset, node)
 	if err != nil {
 		b.buf.Reset()
-		b.buf.WriteString(err.String())
+		b.buf.WriteString(err.Error())
 	}
 	return b.buf.String()
 }
@@ -268,7 +269,7 @@ type Value struct {
 	Doc  string
 }
 
-func (b *builder) values(vdocs []*doc.ValueDoc) []*Value {
+func (b *builder) values(vdocs []*doc.Value) []*Value {
 	var result []*Value
 	for _, d := range vdocs {
 		result = append(result, &Value{
@@ -307,28 +308,24 @@ type Func struct {
 	Examples []Example
 }
 
-func (b *builder) funcs(fdocs []*doc.FuncDoc) []*Func {
+func (b *builder) funcs(fdocs []*doc.Func) []*Func {
 	var result []*Func
 	for _, d := range fdocs {
-		exampleName := d.Name
-		recv := ""
-		if d.Recv != nil {
-			recv = b.printNode(d.Recv)
-			r := d.Recv
-			if t, ok := r.(*ast.StarExpr); ok {
-				r = t.X
-			}
-			if t, ok := r.(*ast.Ident); ok {
-				exampleName = t.Name + "_" + exampleName
-			}
+		var exampleName string
+		switch {
+		case d.Recv == "":
+			exampleName = d.Name
+		case d.Recv[0] == '*':
+			exampleName = d.Recv[1:] + "_" + d.Name
+		default:
+			exampleName = d.Recv + "_" + d.Name
 		}
-
 		result = append(result, &Func{
 			Decl:     b.printDecl(d.Decl),
 			URL:      b.printPos(d.Decl.Pos()),
 			Doc:      d.Doc,
 			Name:     d.Name,
-			Recv:     recv,
+			Recv:     d.Recv,
 			Examples: b.getExamples(exampleName),
 		})
 	}
@@ -336,30 +333,30 @@ func (b *builder) funcs(fdocs []*doc.FuncDoc) []*Func {
 }
 
 type Type struct {
-	Doc       string
-	Name      string
-	Decl      Decl
-	URL       string
-	Consts    []*Value
-	Vars      []*Value
-	Factories []*Func
-	Methods   []*Func
-	Examples  []Example
+	Doc      string
+	Name     string
+	Decl     Decl
+	URL      string
+	Consts   []*Value
+	Vars     []*Value
+	Funcs    []*Func
+	Methods  []*Func
+	Examples []Example
 }
 
-func (b *builder) types(tdocs []*doc.TypeDoc) []*Type {
+func (b *builder) types(tdocs []*doc.Type) []*Type {
 	var result []*Type
 	for _, d := range tdocs {
 		result = append(result, &Type{
-			Doc:       d.Doc,
-			Name:      d.Type.Name.Name,
-			Decl:      b.printDecl(d.Decl),
-			URL:       b.printPos(d.Decl.Pos()),
-			Consts:    b.values(d.Consts),
-			Vars:      b.values(d.Vars),
-			Factories: b.funcs(d.Factories),
-			Methods:   b.funcs(d.Methods),
-			Examples:  b.getExamples(d.Type.Name.Name),
+			Doc:      d.Doc,
+			Name:     d.Name,
+			Decl:     b.printDecl(d.Decl),
+			URL:      b.printPos(d.Decl.Pos()),
+			Consts:   b.values(d.Consts),
+			Vars:     b.values(d.Vars),
+			Funcs:    b.funcs(d.Funcs),
+			Methods:  b.funcs(d.Methods),
+			Examples: b.getExamples(d.Name),
 		})
 	}
 	return result
@@ -395,7 +392,7 @@ type Package struct {
 	ProjectURL  string
 	Synopsis    string
 	Types       []*Type
-	Updated     int64
+	Updated     time.Time
 	Vars        []*Value
 }
 
@@ -405,7 +402,7 @@ type Source struct {
 	Content  interface{}
 }
 
-func Build(importPath string, lineFmt string, files []Source) (*Package, os.Error) {
+func Build(importPath string, lineFmt string, files []Source) (*Package, error) {
 	if len(files) == 0 {
 		return nil, ErrPackageNotFound
 	}
@@ -470,7 +467,7 @@ func Build(importPath string, lineFmt string, files []Source) (*Package, os.Erro
 	}
 
 	ast.PackageExports(b.pkg)
-	pdoc := doc.NewPackageDoc(b.pkg, importPath)
+	pdoc := doc.New(b.pkg, importPath, 0)
 
 	// Collect examples.
 	for _, f := range files {
@@ -478,10 +475,10 @@ func Build(importPath string, lineFmt string, files []Source) (*Package, os.Erro
 			continue
 		}
 		src, err := parser.ParseFile(b.fset, f.Filename, f.Content, parser.ParseComments)
-		if err != nil || src.Name.Name != pdoc.PackageName {
+		if err != nil || src.Name.Name != pdoc.Name {
 			continue
 		}
-		for _, e := range goExamples(&ast.Package{src.Name.Name, nil, nil, map[string]*ast.File{f.Filename: src}}) {
+		for _, e := range doc.Examples(&ast.Package{src.Name.Name, nil, nil, map[string]*ast.File{f.Filename: src}}) {
 			if i := strings.LastIndex(e.Name, "_"); i >= 0 {
 				if i < len(e.Name)-1 && !startsWithUppercase(e.Name[i+1:]) {
 					e.Name = e.Name[:i]
@@ -497,16 +494,16 @@ func Build(importPath string, lineFmt string, files []Source) (*Package, os.Erro
 		len(pdoc.Vars) == 0
 
 	var isCmd bool
-	if pdoc.PackageName == "documentation" &&
+	if pdoc.Name == "documentation" &&
 		len(pdoc.Filenames) == 1 &&
 		path.Base(pdoc.Filenames[0]) == "doc.go" &&
 		noExports &&
 		hasApplicationMain {
 		isCmd = true
-		pdoc.PackageName = path.Base(importPath)
+		pdoc.Name = path.Base(importPath)
 	}
 
-	hide := (pdoc.PackageName == "main" && hasApplicationMain) || (noExports && !isCmd)
+	hide := (pdoc.Name == "main" && hasApplicationMain) || (noExports && !isCmd)
 
 	return &Package{
 		Consts:     b.values(pdoc.Consts),
@@ -516,10 +513,10 @@ func Build(importPath string, lineFmt string, files []Source) (*Package, os.Erro
 		Hide:       hide,
 		ImportPath: pdoc.ImportPath,
 		IsCmd:      isCmd,
-		Name:       pdoc.PackageName,
+		Name:       pdoc.Name,
 		Synopsis:   synopsis(pdoc.Doc),
 		Types:      b.types(pdoc.Types),
-		Updated:    time.Seconds(),
+		Updated:    time.Now(),
 		Vars:       b.values(pdoc.Vars),
 	}, nil
 }

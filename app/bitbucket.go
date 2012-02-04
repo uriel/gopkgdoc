@@ -17,8 +17,7 @@ package app
 import (
 	"appengine"
 	"doc"
-	"json"
-	"os"
+	"encoding/json"
 	"regexp"
 )
 
@@ -28,7 +27,7 @@ func getBitbucketIndexTokens(match []string) []string {
 	return []string{"bitbucket.org/" + match[1] + "/" + match[2]}
 }
 
-func getBitbucketDoc(c appengine.Context, match []string) (*doc.Package, os.Error) {
+func getBitbucketDoc(c appengine.Context, match []string) (*doc.Package, error) {
 
 	importPath := match[0]
 	userName := match[1]

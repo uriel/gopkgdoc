@@ -18,11 +18,11 @@ import (
 	"appengine"
 	"appengine/memcache"
 	"doc"
-	"http"
-	"json"
-	"os"
+	"encoding/json"
+	"net/http"
 	"path"
 	"regexp"
+	"time"
 )
 
 type gitBlob struct {
@@ -38,7 +38,7 @@ func getGithubIndexTokens(match []string) []string {
 	return []string{"github.com/" + match[1] + "/" + match[2]}
 }
 
-func getGithubDoc(c appengine.Context, match []string) (*doc.Package, os.Error) {
+func getGithubDoc(c appengine.Context, match []string) (*doc.Package, error) {
 	importPath := match[0]
 	userName := match[1]
 	repoName := match[2]
@@ -85,7 +85,7 @@ func getGithubDoc(c appengine.Context, match []string) (*doc.Package, os.Error) 
 	return pdoc, nil
 }
 
-func getGithubBlobs(c appengine.Context, userRepo string) ([]gitBlob, os.Error) {
+func getGithubBlobs(c appengine.Context, userRepo string) ([]gitBlob, error) {
 	var blobs []gitBlob
 
 	cacheKey := "gitblobs:" + userRepo
@@ -115,7 +115,7 @@ func getGithubBlobs(c appengine.Context, userRepo string) ([]gitBlob, os.Error) 
 			blobs = append(blobs, gitBlob{Path: node.Path, Url: node.Url})
 		}
 	}
-	if err := cacheSet(c, cacheKey, blobs, 3600); err != nil {
+	if err := cacheSet(c, cacheKey, blobs, time.Hour); err != nil {
 		return nil, err
 	}
 	return blobs, nil

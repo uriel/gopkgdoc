@@ -6,12 +6,13 @@ import (
 	"appengine/urlfetch"
 	"bytes"
 	"doc"
+	"encoding/gob"
+	"errors"
 	"fmt"
-	"gob"
-	"http"
 	"io"
 	"io/ioutil"
-	"os"
+	"net/http"
+	"time"
 )
 
 func init() {
@@ -19,7 +20,7 @@ func init() {
 	gob.Register(make([]map[string]interface{}, 0))
 }
 
-func cacheGet(c appengine.Context, key string, value interface{}) os.Error {
+func cacheGet(c appengine.Context, key string, value interface{}) error {
 	item, err := memcache.Get(c, key)
 	if err != nil {
 		return err
@@ -27,7 +28,7 @@ func cacheGet(c appengine.Context, key string, value interface{}) os.Error {
 	return gob.NewDecoder(bytes.NewBuffer(item.Value)).Decode(value)
 }
 
-func cacheSet(c appengine.Context, key string, value interface{}, expiration int32) os.Error {
+func cacheSet(c appengine.Context, key string, value interface{}, expiration time.Duration) error {
 	var buf bytes.Buffer
 	err := gob.NewEncoder(&buf).Encode(value)
 	if err != nil {
@@ -36,15 +37,15 @@ func cacheSet(c appengine.Context, key string, value interface{}, expiration int
 	return memcache.Set(c, &memcache.Item{Key: key, Expiration: expiration, Value: buf.Bytes()})
 }
 
-var errReading = os.NewError("urlReader: reading")
+var errReading = errors.New("urlReader: reading")
 
 type urlReader struct {
 	buf     bytes.Buffer
-	errChan chan os.Error
-	err     os.Error
+	errChan chan error
+	err     error
 }
 
-func (ur *urlReader) Read(b []byte) (int, os.Error) {
+func (ur *urlReader) Read(b []byte) (int, error) {
 	if ur.err == errReading {
 		ur.err = <-ur.errChan
 	}
@@ -57,7 +58,7 @@ func (ur *urlReader) Read(b []byte) (int, os.Error) {
 // newAsyncReader asynchronously reads the resource at url and returns a reader
 // that will block waiting for the result.
 func newAsyncReader(c appengine.Context, url string, header http.Header) io.Reader {
-	ur := &urlReader{err: errReading, errChan: make(chan os.Error, 1)}
+	ur := &urlReader{err: errReading, errChan: make(chan error, 1)}
 	go func() {
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
@@ -85,7 +86,7 @@ func newAsyncReader(c appengine.Context, url string, header http.Header) io.Read
 
 // httpGet gets the resource at url. If the resource is not found,
 // doc.ErrPackageNotFound is returned.
-func httpGet(c appengine.Context, url string) ([]byte, os.Error) {
+func httpGet(c appengine.Context, url string) ([]byte, error) {
 	resp, err := urlfetch.Client(c).Get(url)
 	if err != nil {
 		return nil, err

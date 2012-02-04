@@ -17,7 +17,6 @@ package app
 import (
 	"appengine"
 	"doc"
-	"os"
 	"regexp"
 )
 
@@ -29,7 +28,7 @@ func getGoogleIndexTokens(match []string) []string {
 	return []string{"code.google.com/p/" + match[1] + match[2]}
 }
 
-func getGoogleDoc(c appengine.Context, match []string) (*doc.Package, os.Error) {
+func getGoogleDoc(c appengine.Context, match []string) (*doc.Package, error) {
 
 	importPath := match[0]
 	projectName := match[1]

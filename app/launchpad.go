@@ -20,8 +20,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"doc"
+	"io"
 	"io/ioutil"
-	"os"
 	"path"
 	"regexp"
 	"strings"
@@ -33,7 +33,7 @@ func getLaunchpadIndexTokens(match []string) []string {
 	return []string{"launchpad.net/" + match[1]}
 }
 
-func getLaunchpadDoc(c appengine.Context, match []string) (*doc.Package, os.Error) {
+func getLaunchpadDoc(c appengine.Context, match []string) (*doc.Package, error) {
 
 	importPath := match[0]
 	repo := match[1]
@@ -64,7 +64,7 @@ func getLaunchpadDoc(c appengine.Context, match []string) (*doc.Package, os.Erro
 	var files []doc.Source
 	for {
 		hdr, err := tr.Next()
-		if err == os.EOF {
+		if err == io.EOF {
 			break
 		}
 		if err != nil {
