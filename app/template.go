@@ -12,6 +12,8 @@
 // License for the specific language governing permissions and limitations
 // under the License.
 
+// +build appengine
+
 package app
 
 import (
@@ -20,7 +22,9 @@ import (
 	"crypto/md5"
 	"doc"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	godoc "go/doc"
 	"io/ioutil"
 	"net/http"
 	"reflect"
@@ -29,6 +33,29 @@ import (
 	"text/template"
 	"time"
 )
+
+func mapFmt(kvs ...interface{}) (map[string]interface{}, error) {
+	if len(kvs)%2 != 0 {
+		return nil, errors.New("map requires even number of arguments.")
+	}
+	m := make(map[string]interface{})
+	for i := 0; i < len(kvs); i += 2 {
+		s, ok := kvs[i].(string)
+		if !ok {
+			return nil, errors.New("even args to map must be strings.")
+		}
+		m[s] = kvs[i+1]
+	}
+	return m, nil
+}
+
+// relativePathFmt formats an import path as html.
+func relativePathFmt(importPath string, parentPath interface{}) string {
+	if p, ok := parentPath.(string); ok && p != "" && strings.HasPrefix(importPath, p) {
+		importPath = importPath[len(p)+1:]
+	}
+	return template.HTMLEscapeString(importPath)
+}
 
 // relativeTime formats the time t in nanoseconds as a human readable relative
 // time.
@@ -50,11 +77,11 @@ func relativeTime(t time.Time) string {
 // commentFmt formats a source code control comment as HTML.
 func commentFmt(v string) string {
 	var buf bytes.Buffer
-	doc.ToHTML(&buf, v)
+	godoc.ToHTML(&buf, v, nil)
 	return buf.String()
 }
 
-// declFrmt formats a Decl as HTML.
+// declFmt formats a Decl as HTML.
 func declFmt(decl doc.Decl) string {
 	var buf bytes.Buffer
 	last := 0
@@ -68,17 +95,9 @@ func declFmt(decl doc.Decl) string {
 			link = true
 		case p == "":
 			link = true
-		default:
-			if m := oldGooglePattern.FindStringSubmatch(p); m != nil {
-				p = newGooglePath(m)
-			}
-			for _, s := range services {
-				if strings.HasPrefix(p, s.prefix) {
-					link = true
-					break
-				}
-			}
+		case doc.IsSupportedService(p):
 			p = "/pkg/" + p
+			link = true
 		}
 		if link {
 			template.HTMLEscape(&buf, t[last:a.Pos])
@@ -93,6 +112,29 @@ func declFmt(decl doc.Decl) string {
 		}
 	}
 	template.HTMLEscape(&buf, t[last:])
+	return buf.String()
+}
+
+// pathInfoFmt formats a doc.PathInfo with breadcrumb links.
+func pathInfoFmt(pi doc.PathInfo) string {
+	importPath := []byte(pi.ImportPath())
+	var buf bytes.Buffer
+	i := 0
+	j := len(pi.ProjectPrefix())
+	if j >= len(importPath) {
+		j = -1
+	}
+	for j > 0 {
+		fmt.Println(i, j)
+		buf.WriteString(`<a href="/pkg/`)
+		template.HTMLEscape(&buf, importPath[:i+j])
+		buf.WriteString(`">`)
+		template.HTMLEscape(&buf, importPath[i:i+j])
+		buf.WriteString(`</a>/`)
+		i = i + j + 1
+		j = bytes.IndexByte(importPath[i:], '/')
+	}
+	template.HTMLEscape(&buf, importPath[i:])
 	return buf.String()
 }
 
@@ -152,6 +194,9 @@ func parseTemplates() (*template.Template, error) {
 		"relativeTime": relativeTime,
 		"staticURL":    staticURL,
 		"equal":        reflect.DeepEqual,
+		"relativePath": relativePathFmt,
+		"map":          mapFmt,
+		"pathInfo":     pathInfoFmt,
 	})
 	return set.ParseGlob("template/*.html")
 }

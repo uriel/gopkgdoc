@@ -12,6 +12,8 @@
 // License for the specific language governing permissions and limitations
 // under the License.
 
+// +build appengine
+
 package app
 
 const standardPackagePath = "http://weekly.golang.org/pkg/"

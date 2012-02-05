@@ -12,17 +12,13 @@
 // License for the specific language governing permissions and limitations
 // under the License.
 
-package app
+package doc
 
 import (
-	"appengine"
-	"appengine/memcache"
-	"doc"
 	"encoding/json"
 	"net/http"
 	"path"
 	"regexp"
-	"time"
 )
 
 type gitBlob struct {
@@ -32,20 +28,22 @@ type gitBlob struct {
 
 var githubRawHeader = http.Header{"Accept": {"application/vnd.github-blob.raw"}}
 
-var gitPattern = regexp.MustCompile(`^github\.com/([a-z0-9A-Z_.\-]+)/([a-z0-9A-Z_.\-]+)(/[a-z0-9A-Z_.\-/]*)?$`)
+var githubPattern = regexp.MustCompile(`^github\.com/([a-z0-9A-Z_.\-]+)/([a-z0-9A-Z_.\-]+)(/[a-z0-9A-Z_.\-/]*)?$`)
 
-func getGithubIndexTokens(match []string) []string {
-	return []string{"github.com/" + match[1] + "/" + match[2]}
-}
+type githubPathInfo []string
 
-func getGithubDoc(c appengine.Context, match []string) (*doc.Package, error) {
-	importPath := match[0]
-	userName := match[1]
-	repoName := match[2]
-	userRepo := userName + "/" + repoName
+func newGithubPathInfo(m []string) PathInfo    { return githubPathInfo(m) }
+func (m githubPathInfo) ImportPath() string    { return m[0] }
+func (m githubPathInfo) ProjectPrefix() string { return "github.com/" + m[1] + "/" + m[2] }
+func (m githubPathInfo) ProjectName() string   { return m[2] }
+func (m githubPathInfo) ProjectURL() string    { return "https://github.com/" + m[1] + "/" + m[2] + "/" }
+
+func (m githubPathInfo) Package(client *http.Client) (*Package, error) {
+	importPath := m[0]
+	userRepo := m[1] + "/" + m[2]
 
 	// Normalize to "" or string with trailing '/'.
-	dir := match[3]
+	dir := m[3]
 	if len(dir) > 0 {
 		dir = dir[1:] + "/"
 	}
@@ -59,43 +57,40 @@ func getGithubDoc(c appengine.Context, match []string) (*doc.Package, error) {
 	//
 	// The second approach is used because it is faster and more reliable.
 
-	blobs, err := getGithubBlobs(c, userRepo)
+	blobs, err := getGithubBlobs(client, userRepo)
 	if err != nil {
 		return nil, err
 	}
 
-	var files []doc.Source
+	var files []source
 	for _, blob := range blobs {
 		d, f := path.Split(blob.Path)
 		if d == dir {
-			files = append(files, doc.Source{
+			files = append(files, source{
 				f,
 				"https://github.com/" + userRepo + "/blob/master/" + dir + f,
-				newAsyncReader(c, blob.Url, githubRawHeader)})
+				blob.Url,
+			})
 		}
 	}
 
-	pdoc, err := doc.Build(importPath, "#L%d", files)
+	err = getFiles(client, files, githubRawHeader)
 	if err != nil {
 		return nil, err
 	}
 
-	pdoc.ProjectURL = "https://github.com/" + userRepo
-	pdoc.ProjectName = repoName
+	pdoc, err := buildDoc(importPath, "#L%d", files)
+	if err != nil {
+		return nil, err
+	}
+
 	return pdoc, nil
 }
 
-func getGithubBlobs(c appengine.Context, userRepo string) ([]gitBlob, error) {
+func getGithubBlobs(client *http.Client, userRepo string) ([]gitBlob, error) {
 	var blobs []gitBlob
 
-	cacheKey := "gitblobs:" + userRepo
-	if err := cacheGet(c, cacheKey, &blobs); err != memcache.ErrCacheMiss {
-		return blobs, err
-	}
-
-	c.Infof("Reading Github repo %s", userRepo)
-
-	p, err := httpGet(c, "https://api.github.com/repos/"+userRepo+"/git/trees/master?recursive=1")
+	p, err := httpGet(client, "https://api.github.com/repos/"+userRepo+"/git/trees/master?recursive=1", nil, true)
 	if err != nil {
 		return nil, err
 	}
@@ -111,12 +106,9 @@ func getGithubBlobs(c appengine.Context, userRepo string) ([]gitBlob, error) {
 		return nil, err
 	}
 	for _, node := range tree.Tree {
-		if node.Type == "blob" && doc.IsGoFile(node.Path) {
+		if node.Type == "blob" && isDocFile(node.Path) {
 			blobs = append(blobs, gitBlob{Path: node.Path, Url: node.Url})
 		}
-	}
-	if err := cacheSet(c, cacheKey, blobs, time.Hour); err != nil {
-		return nil, err
 	}
 	return blobs, nil
 }

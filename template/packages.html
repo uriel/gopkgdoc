@@ -3,16 +3,16 @@
 <html lang="en">
 <head>
   {{template "CommonHead"}}
-  <title>GoPkgDoc: Packages</title>
+  <title>GoPkgDoc: {{if .pi}}{{.pi.ImportPath|html}}{{else}}Packages{{end}}</title>
 </head>
 
 <body>
 
-{{template "NavBar" "packages"}}
+{{if .pi}}{{template "NavBar" ""}}{{else}}{{template "NavBar" "packages"}}{{end}}
 
 <div class="page-header">
   <div class="container">
-    <h1>Packages</h1>
+    <h1>{{if .pi}}<a href="{{.pi.ProjectURL|html}}">{{.pi.ProjectName}}</a> <small>{{.pi|pathInfo}}</small>{{else}}Packages{{end}}</h1>
   </div>
 </div>
 
@@ -20,21 +20,15 @@
 
 <p>This list is updated automatically when packages are viewed on GoPkgDoc.
 
-<table class="table">
-  <thead><tr><th>Import Path</th><th>Synopsis</th></thead>
-  <tbody>
-    {{range .Packages}}
-      <tr>
-        <td><a href="/pkg/{{.ImportPath|html}}">{{.ImportPath}}</a>
-        <td>{{.Synopsis|comment}}</td>
-      </tr>
-    {{end}}
-  </tbody>
-</table>
+{{if .pi}}
+  {{template "PackageList" map "pkgs" .pkgs "parentPath" .pi.ImportPath}}
+{{else}}
+  {{template "PackageList" map "pkgs" .pkgs "parentPath" ""}}
+{{end}}
 
 <div class="page-footer">
   <p class="pull-right"><a href="#">Back to top</a></p>
-  <p>GoPkgDoc generated this page {{.Updated|relativeTime}}. Number of packages: {{len .Packages}}
+  <p>Number of packages: {{len .pkgs}}
 </div>
 
 </div>

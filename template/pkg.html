@@ -3,7 +3,7 @@
 <html lang="en">
 <head>
   {{template "CommonHead"}}
-  <title>GoPkgDoc: {{.ProjectName|html}}</title>
+  <title>GoPkgDoc: {{.pi.ProjectName|html}}</title>
 </head>
 
 <body>
@@ -12,11 +12,12 @@
 
 <div class="page-header">
   <div class="container">
-    <h1><a href="{{.ProjectURL|html}}">{{.ProjectName|html}}</a></h1>
+    <h1><a href="{{.pi.ProjectURL|html}}">{{.pi.ProjectName|html}}</a> <small>{{.pi|pathInfo}}</small></h1>
   </div>
 </div>
 
 <div class="container">
+{{with .pdoc}}
 {{if .IsCmd}}
   <h2>Command {{.Name|html}}</h2>
   {{.Doc|comment}}
@@ -48,6 +49,7 @@
       {{range .Methods}}<li><a href="#{{$t.Name|html}}.{{.Name|html}}" title="{{.Decl.Text|html}}">func ({{.Recv|html}}) {{.Name|html}}</a>{{end}}
     {{if or .Funcs .Methods}}</ul>{{end}}
 {{end}}
+{{if $.pkgs}}<li><a href="#subdirs">Subdirectiroies</a>{{end}}
 </ul>
 </div>
 
@@ -96,10 +98,13 @@
 {{end}}
 
 {{end}}
+{{end}}
+
+{{if .pkgs}}<h3 id="subdirs">Subdirectories</h3>{{template "PackageList" map "pkgs" .pkgs "parentPath" .pi.ImportPath}}{{end}}
 
 <div class="page-footer">
   <p class="pull-right"><a href="#">Back to top</a></p>
-  <p>GoPkgDoc generated this page from the <a href="{{.ProjectURL|html}}">{{.ProjectName|html}} source code</a> {{.Updated|relativeTime}}.
+  <p>GoPkgDoc generated this page from the <a href="{{.pi.ProjectURL|html}}">{{.pi.ProjectName|html}} source code</a> {{.pdoc.Updated|relativeTime}}.
 </div>
 
 </div>

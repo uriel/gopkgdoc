@@ -2,6 +2,7 @@
 <meta charset="utf-8">
 <link href="{{staticURL "/static/bootstrap.css"}}" rel="stylesheet">
 <style type="text/css">
+h1 small a { color: inherit }
 code { 
   background-color: white; 
   border: none; 
@@ -35,4 +36,14 @@ code {
     </div>
   </div>
 </div>
+{{end}}
+
+{{define "PackageList"}}
+<div class="container">
+<table class="table table-condensed">
+  <thead><tr><th>Path</th><th>Synopsis</th></thead>
+  <tbody>
+    {{range .pkgs}}<tr><td><a href="/pkg/{{.ImportPath|html}}">{{relativePath .ImportPath $.parentPath}}</a><td>{{.Synopsis|comment}}</td></tr>{{end}}
+  </tbody>
+</table>
 {{end}}

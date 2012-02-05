@@ -20,7 +20,7 @@
 
 <p>Oh snap! Our team of gophers could not find a package with import path "{{.importPath|html}}".  
 
-{{if .didYouMean}}<p>Did you mean:<ul>{{range .didYouMean}}<li><a href="/pkg/{{.|html}}">{{.|html}}</a>{{end}}</ul>{{end}}
+{{if .suggestions}}<p>Did you mean:<ul>{{range .suggestions}}<li><a href="/pkg/{{.|html}}">{{.|html}}</a>{{end}}</ul>{{end}}
 
 <p>Check the import path and try again.
 

@@ -12,34 +12,38 @@
 // License for the specific language governing permissions and limitations
 // under the License.
 
-package app
+package doc
 
 import (
-	"appengine"
-	"doc"
 	"encoding/json"
+	"net/http"
 	"regexp"
 )
 
 var bitbucketPattern = regexp.MustCompile(`^bitbucket\.org/([a-z0-9A-Z_.\-]+)/([a-z0-9A-Z_.\-]+)(/[a-z0-9A-Z_.\-/]*)?$`)
 
-func getBitbucketIndexTokens(match []string) []string {
-	return []string{"bitbucket.org/" + match[1] + "/" + match[2]}
+type bitbucketPathInfo []string
+
+func newBitbucketPathInfo(m []string) PathInfo    { return bitbucketPathInfo(m) }
+func (m bitbucketPathInfo) ImportPath() string    { return m[0] }
+func (m bitbucketPathInfo) ProjectPrefix() string { return "bitbucket.org/" + m[1] + "/" + m[2] }
+func (m bitbucketPathInfo) ProjectName() string   { return m[2] }
+func (m bitbucketPathInfo) ProjectURL() string {
+	return "https://bitbucket.org/" + m[1] + "/" + m[2] + "/"
 }
 
-func getBitbucketDoc(c appengine.Context, match []string) (*doc.Package, error) {
+func (m bitbucketPathInfo) Package(client *http.Client) (*Package, error) {
 
-	importPath := match[0]
-	userName := match[1]
-	repoName := match[2]
+	importPath := m[0]
+	userRepo := m[1] + "/" + m[2]
 
 	// Normalize dir to "" or string with trailing '/'.
-	dir := match[3]
+	dir := m[3]
 	if len(dir) > 0 {
 		dir = dir[1:] + "/"
 	}
 
-	p, err := httpGet(c, "https://api.bitbucket.org/1.0/repositories/"+userName+"/"+repoName+"/src/tip/"+dir)
+	p, err := httpGet(client, "https://api.bitbucket.org/1.0/repositories/"+userRepo+"/src/tip/"+dir, nil, true)
 	if err != nil {
 		return nil, err
 	}
@@ -54,22 +58,21 @@ func getBitbucketDoc(c appengine.Context, match []string) (*doc.Package, error) 
 		return nil, err
 	}
 
-	var files []doc.Source
+	var files []source
 	for _, f := range directory.Files {
-		if doc.IsGoFile(f.Path) {
-			files = append(files, doc.Source{
+		if isDocFile(f.Path) {
+			files = append(files, source{
 				f.Path,
-				"https://bitbucket.org/" + userName + "/" + repoName + "/src/tip/" + f.Path,
-				newAsyncReader(c, "https://api.bitbucket.org/1.0/repositories/"+userName+"/"+repoName+"/raw/tip/"+f.Path, nil)})
+				"https://bitbucket.org/" + userRepo + "/src/tip/" + f.Path,
+				"https://api.bitbucket.org/1.0/repositories/" + userRepo + "/raw/tip/" + f.Path,
+			})
 		}
 	}
 
-	pdoc, err := doc.Build(importPath, "#cl-%d", files)
+	err = getFiles(client, files, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	pdoc.ProjectName = repoName
-	pdoc.ProjectURL = "https://bitbucket.org/" + userName + "/" + repoName + "/"
-	return pdoc, nil
+	return buildDoc(importPath, "#cl-%d", files)
 }
