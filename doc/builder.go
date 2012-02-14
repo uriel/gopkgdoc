@@ -70,7 +70,7 @@ Loop:
 			buf = append(buf, b)
 		}
 	}
-	// Ensure that synopsis fits in datastore text property.
+	// Ensure that synopsis fits an App Engine datastore text property.
 	// TODO: don't chop buf in middle of a rune.
 	if len(buf) > 400 {
 		buf = buf[:400]
@@ -102,7 +102,7 @@ func (b *builder) fileImportPaths(filename string) map[string]string {
 			if i.Name != nil {
 				name = i.Name.Name
 			} else {
-				// TODO: find name using Package entities in datastore.
+				// TODO: find name using Package entities in App Engine datastore.
 				_, name = path.Split(importPath)
 				switch {
 				case strings.HasPrefix(name, "go-"):
@@ -134,7 +134,7 @@ func (p sortByPos) Len() int           { return len(p) }
 func (p sortByPos) Less(i, j int) bool { return p[i].Pos < p[j].Pos }
 func (p sortByPos) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
-// annotationVisitor collects type annoations.
+// annotationVisitor collects type annotations.
 type annotationVisitor struct {
 	annotations []TypeAnnotation
 	fset        *token.FileSet
@@ -282,6 +282,7 @@ func (b *builder) getExamples(name string) []Example {
 			code := b.printNode(e.Body)
 			code = strings.Replace(code, "\n    ", "\n", -1)
 			code = code[2 : len(code)-2]
+			code = strings.TrimRight(code, "\r\n\t ")
 			docs = append(docs, Example{code, e.Output})
 		}
 	}
@@ -368,19 +369,50 @@ func (b *builder) files(filenames []string) []*File {
 	return result
 }
 
+func (b *builder) children(m map[string]bool) []string {
+	if m == nil || len(m) == 0 {
+		return nil
+	}
+	r := make([]string, 0, len(m))
+	for p := range m {
+		r = append(r, p)
+	}
+	sort.Strings(r)
+	return r
+}
+
 type Package struct {
-	Consts     []*Value
-	Doc        string
-	Files      []*File
-	Funcs      []*Func
-	Hide       bool
+	// The import path for this package.
 	ImportPath string
-	IsCmd      bool
-	Name       string
-	Synopsis   string
-	Types      []*Type
-	Updated    time.Time
-	Vars       []*Value
+
+	// Child package import paths. This is not filled in for all VCS services.
+	Children []string
+
+	// Package name or "" if no package for this import path.
+	Name string
+
+	// Synopsis and full documentation for package.
+	Synopsis string
+	Doc      string
+
+	// If true, then the package does not have any exports or it is a main
+	// package with no documentation.
+	Hide bool
+
+	// The time this object was created.
+	Updated time.Time
+
+	// Format this package as a command.
+	IsCmd bool
+
+	// Top-level declarations.
+	Consts []*Value
+	Funcs  []*Func
+	Types  []*Type
+	Vars   []*Value
+
+	// Non-test files.
+	Files []*File
 }
 
 type source struct {
@@ -389,10 +421,7 @@ type source struct {
 	Content  interface{}
 }
 
-func buildDoc(importPath string, lineFmt string, files []source) (*Package, error) {
-	if len(files) == 0 {
-		return nil, ErrPackageNotFound
-	}
+func buildDoc(importPath string, lineFmt string, files []source, children map[string]bool) (*Package, error) {
 
 	b := &builder{
 		lineFmt:     lineFmt,
@@ -433,12 +462,15 @@ func buildDoc(importPath string, lineFmt string, files []source) (*Package, erro
 	}
 
 	if b.pkg == nil {
+		if len(children) > 0 {
+			return &Package{Children: b.children(children), ImportPath: importPath, Updated: time.Now()}, nil
+		}
 		return nil, ErrPackageNotFound
 	}
 
 	// Determine if the directory contains a function that can be used as an
 	// application main function. This check must be done before the AST is 
-	// filtred by the call to ast.PackageExports below.
+	// filtered by the call to ast.PackageExports below.
 	hasApplicationMain := false
 	if pkg, ok := pkgs["main"]; ok {
 	MainCheck:
@@ -462,7 +494,10 @@ func buildDoc(importPath string, lineFmt string, files []source) (*Package, erro
 			continue
 		}
 		src, err := parser.ParseFile(b.fset, f.Filename, f.Content, parser.ParseComments)
-		if err != nil || src.Name.Name != pdoc.Name {
+		if err != nil {
+			continue
+		}
+		if src.Name.Name != pdoc.Name && src.Name.Name != pdoc.Name+"_test" {
 			continue
 		}
 		for _, e := range doc.Examples(&ast.Package{src.Name.Name, nil, nil, map[string]*ast.File{f.Filename: src}}) {
@@ -493,6 +528,7 @@ func buildDoc(importPath string, lineFmt string, files []source) (*Package, erro
 	hide := (pdoc.Name == "main" && hasApplicationMain) || (noExports && !isCmd)
 
 	return &Package{
+		Children:   b.children(children),
 		Consts:     b.values(pdoc.Consts),
 		Doc:        pdoc.Doc,
 		Files:      b.files(pdoc.Filenames),

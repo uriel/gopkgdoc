@@ -4,6 +4,19 @@
 <head>
   {{template "CommonHead"}}
   <title>GoPkgDoc: {{.pi.ProjectName|html}}</title>
+  <script language="javascript"> 
+    function ex(id) {
+      var a = document.getElementById("a_" + id);
+      var d = document.getElementById("d_" + id);
+      if (d.style.display === "block") {
+        d.style.display = "none";
+        a.innerHTML = "&#9657; Example";
+      } else {
+        d.style.display = "block";
+        a.innerHTML = "&#9662; Example";
+      }
+    }
+  </script>
 </head>
 
 <body>
@@ -70,7 +83,7 @@
 <h3 id="{{.Name|html}}">func <a href="{{.URL|html}}">{{.Name|html}}</a></h3>
 <p><code>{{.Decl|decl}}</code></p>
 {{.Doc|comment}}
-{{template "Examples" .}}
+{{template "Examples" map "obj" . "type" ""}}
 {{end}}
 
 {{range $t := .Types}}
@@ -79,20 +92,20 @@
 <pre>{{.Decl|decl}}</pre>
 {{range .Consts}}{{.Doc|comment}}<pre>{{.Decl|decl}}</pre>{{end}}
 {{range .Vars}}{{.Doc|comment}}<pre>{{.Decl|decl}}</pre>{{end}}
-{{template "Examples" .}}
+{{template "Examples" map "obj" . "type" ""}}
 
 {{range .Funcs}}
 <h4 id="{{.Name|html}}">func <a href="{{.URL|html}}">{{.Name|html}}</a></h4>
 <p><code>{{.Decl|decl}}</code></p>
 {{.Doc|comment}}
-{{template "Examples" .}}
+{{template "Examples" map "obj" . "type" $t}}
 {{end}}
 
 {{range .Methods}}
 <h4 id="{{$t.Name|html}}.{{.Name|html}}">func ({{.Recv|html}}) <a href="{{.URL|html}}">{{.Name|html}}</a></h4>
 <p><code>{{.Decl|decl}}</code></p>
 {{.Doc|comment}}
-{{template "Examples" .}}
+{{template "Examples" map "obj" . "type" $t}}
 {{end}}
 
 {{end}}
@@ -113,14 +126,15 @@
 </html>
 {{end}}
 
-{{define "Examples"}}
-{{range .Examples}}
-<p>Example:
-<pre>{{if .Output}}<strong>Code:</strong>
+{{define "Examples"}}{{if len .obj.Examples}}
+<p><a class="ex" id="a_{{if .type}}{{.type.Name|html}}_{{end}}{{.obj.Name|html}}" href="javascript:ex('{{if .type}}{{.type.Name|html}}_{{end}}{{.obj.Name|html}}')">&#9657; Example</a>
+<div  id="d_{{if .type}}{{.type.Name|html}}_{{end}}{{.obj.Name|html}}" style="display:none;">
+{{range .obj.Examples}}<pre>{{if .Output}}<strong>Code:</strong>
           
 {{end}}{{.Code|html}}{{if .Output}}
 
 <strong>Output:</strong>
 
 {{.Output|html}}{{end}}</pre>{{end}}
-{{end}}
+</div> 
+{{end}}{{end}}

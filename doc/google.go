@@ -58,7 +58,7 @@ func (m googlePathInfo) Package(client *http.Client) (*Package, error) {
 		return nil, ErrPackageNotFound
 	}
 
-	// Scrape the repo browser to find indvidual Go files.
+	// Scrape the repo browser to find individual Go files.
 	p, err = httpGet(client, "http://"+subrepo+repo+".googlecode.com/"+vcs+"/"+dir, nil, true)
 	if err != nil {
 		return nil, err
@@ -85,5 +85,6 @@ func (m googlePathInfo) Package(client *http.Client) (*Package, error) {
 		return nil, err
 	}
 
-	return buildDoc(importPath, "#%d", files)
+	// TODO: find child directories.
+	return buildDoc(importPath, "#%d", files, nil)
 }

@@ -80,12 +80,14 @@ func (pkg *Package) equal(other *Package) bool {
 	return true
 }
 
+// updatePackage updates the package in the datastore and clears memcache as
+// needed.
 func updatePackage(c appengine.Context, pi doc.PathInfo, pdoc *doc.Package) error {
 
 	importPath := pi.ImportPath()
 
 	var pkg *Package
-	if pdoc != nil {
+	if pdoc != nil && pdoc.Name != "" {
 		indexTokens := make([]string, 1, 3)
 		indexTokens[0] = strings.ToLower(pi.ProjectPrefix())
 		if !pdoc.Hide {
@@ -102,14 +104,18 @@ func updatePackage(c appengine.Context, pi doc.PathInfo, pdoc *doc.Package) erro
 		}
 	}
 
-	var clearCache bool
+	// Update the datastore. To minimize datastore costs, the datastore is 
+	// conditionally updated by comparing the package to the stored package.
+
+	var invalidateCache bool
+
 	key := datastore.NewKey(c, "Package", importPath, 0, nil)
 	var storedPackage Package
 	err := datastore.Get(c, key, &storedPackage)
 	switch err {
 	case datastore.ErrNoSuchEntity:
 		if pkg != nil {
-			clearCache = true
+			invalidateCache = true
 			c.Infof("Adding package %s", importPath)
 			if _, err := datastore.Put(c, key, pkg); err != nil {
 				c.Errorf("Put(%s) -> %v", importPath, err)
@@ -117,13 +123,13 @@ func updatePackage(c appengine.Context, pi doc.PathInfo, pdoc *doc.Package) erro
 		}
 	case nil:
 		if pkg == nil {
-			clearCache = true
+			invalidateCache = true
 			c.Infof("Deleting package %s", importPath)
 			if err := datastore.Delete(c, key); err != datastore.ErrNoSuchEntity && err != nil {
 				c.Errorf("Delete(%s) -> %v", importPath, err)
 			}
 		} else if !pkg.equal(&storedPackage) {
-			clearCache = true
+			invalidateCache = storedPackage.Synopsis != pkg.Synopsis
 			c.Infof("Updating package %s", importPath)
 			if _, err := datastore.Put(c, key, pkg); err != nil {
 				c.Errorf("Put(%s) -> %v", importPath, err)
@@ -134,11 +140,11 @@ func updatePackage(c appengine.Context, pi doc.PathInfo, pdoc *doc.Package) erro
 	}
 
 	// Update memcache.
-	if clearCache {
+
+	if invalidateCache {
 		if err = cacheClear(c, packageListKey, projectListKeyPrefix+pi.ProjectPrefix()); err != nil {
 			return err
 		}
 	}
-
 	return nil
 }

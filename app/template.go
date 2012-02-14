@@ -125,7 +125,6 @@ func pathInfoFmt(pi doc.PathInfo) string {
 		j = -1
 	}
 	for j > 0 {
-		fmt.Println(i, j)
 		buf.WriteString(`<a href="/pkg/`)
 		template.HTMLEscape(&buf, importPath[:i+j])
 		buf.WriteString(`">`)

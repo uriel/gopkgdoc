@@ -28,6 +28,7 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -76,34 +77,66 @@ func getDoc(c appengine.Context, importPath string) (*doc.Package, []*Package, e
 		pdoc, err = pi.Package(urlfetch.Client(c))
 		switch err {
 		case doc.ErrPackageNotFound:
-			pdoc = nil
 			if len(pkgs) > 0 {
-				// Write a tombstone to the cache.
-				item.Object = &doc.Package{}
-				item.Expiration = time.Hour
-				if err := cacheSet(c, item); err != nil {
-					return nil, nil, err
-				}
+				// Create a tombstone.
+				pdoc = &doc.Package{}
 			}
 		case nil:
+			// Fix standard packages.
+			const standardPackagesPrefix = "code.google.com/p/go/src/pkg/"
+			if strings.HasPrefix(pdoc.ImportPath, standardPackagesPrefix) {
+				pdoc.ImportPath = pdoc.ImportPath[len(standardPackagesPrefix):]
+				pdoc.Hide = true
+			}
+		default:
+			return nil, nil, err
+		}
+		if pdoc != nil {
+			// Cache the document that we loaded or the tombstone.
 			item.Object = pdoc
 			item.Expiration = time.Hour
 			if err := cacheSet(c, item); err != nil {
 				return nil, nil, err
 			}
-		default:
-			return nil, nil, err
 		}
+		// Update the Packages table in the datastore.
 		if err := updatePackage(c, pi, pdoc); err != nil {
 			return nil, nil, err
 		}
 	case nil:
-		// Ignore tombstones.
+		// OK
+	default:
+		return nil, nil, err
+	}
+
+	if pdoc != nil {
+
+		// Merge document children into package list loaded from datastore.
+
+		m := make(map[string]*Package, len(pkgs)+len(pdoc.Children))
+		for _, pkg := range pkgs {
+			m[pkg.ImportPath] = pkg
+		}
+		for _, child := range pdoc.Children {
+			if _, found := m[child]; !found {
+				m[child] = &Package{ImportPath: child}
+			}
+		}
+		keys := make([]string, 0, len(m))
+		for key := range m {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		pkgs = pkgs[0:0]
+		for _, key := range keys {
+			pkgs = append(pkgs, m[key])
+		}
+
+		// Ignore tombstones and docs with children only.
+
 		if pdoc.Name == "" {
 			pdoc = nil
 		}
-	default:
-		return nil, nil, err
 	}
 
 	if pdoc == nil && len(pkgs) == 0 {
@@ -120,10 +153,11 @@ func (f handlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	err := f(w, r)
 	if err != nil {
 		appengine.NewContext(r).Errorf("Error %s", err.Error())
-		switch err := err.(type) {
-		case doc.GetError:
+		if err, ok := err.(doc.GetError); ok {
 			http.Error(w, "Error getting files from "+err.Host+".", http.StatusInternalServerError)
-		default:
+		} else if appengine.IsCapabilityDisabled(err) || appengine.IsOverQuota(err) {
+			http.Error(w, "Internal error: "+err.Error(), http.StatusInternalServerError)
+		} else {
 			http.Error(w, "Internal Error", http.StatusInternalServerError)
 		}
 	}
@@ -291,7 +325,7 @@ func serveHome(w http.ResponseWriter, r *http.Request) error {
 			map[string]interface{}{"Host": r.Host})
 	}
 
-	// Logs show that people are looking for the standard pacakges. Help them
+	// Logs show that people are looking for the standard packages. Help them
 	// out with a redirect to golang.org.
 	if standardPackages[importPath] {
 		http.Redirect(w, r, standardPackagePath+importPath, 302)

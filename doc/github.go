@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"path"
 	"regexp"
+	"strings"
 )
 
 type gitBlob struct {
@@ -63,14 +64,18 @@ func (m githubPathInfo) Package(client *http.Client) (*Package, error) {
 	}
 
 	var files []source
+	children := make(map[string]bool)
 	for _, blob := range blobs {
 		d, f := path.Split(blob.Path)
-		if d == dir {
+		switch {
+		case d == dir:
 			files = append(files, source{
 				f,
 				"https://github.com/" + userRepo + "/blob/master/" + dir + f,
 				blob.Url,
 			})
+		case strings.HasPrefix(d, dir) && !strings.HasSuffix(f, "_test.go"):
+			children["github.com/"+userRepo+"/"+d[:len(d)-1]] = true
 		}
 	}
 
@@ -79,12 +84,7 @@ func (m githubPathInfo) Package(client *http.Client) (*Package, error) {
 		return nil, err
 	}
 
-	pdoc, err := buildDoc(importPath, "#L%d", files)
-	if err != nil {
-		return nil, err
-	}
-
-	return pdoc, nil
+	return buildDoc(importPath, "#L%d", files, children)
 }
 
 func getGithubBlobs(client *http.Client, userRepo string) ([]gitBlob, error) {

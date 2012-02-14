@@ -74,5 +74,6 @@ func (m bitbucketPathInfo) Package(client *http.Client) (*Package, error) {
 		return nil, err
 	}
 
-	return buildDoc(importPath, "#cl-%d", files)
+	// TODO: find child directories.
+	return buildDoc(importPath, "#cl-%d", files, nil)
 }

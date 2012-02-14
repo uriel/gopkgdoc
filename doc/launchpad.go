@@ -90,6 +90,7 @@ func (m launchpadPathInfo) Package(client *http.Client) (*Package, error) {
 
 	prefix := "+branch/" + repo + "/"
 	var files []source
+	children := make(map[string]bool)
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -102,21 +103,22 @@ func (m launchpadPathInfo) Package(client *http.Client) (*Package, error) {
 			continue
 		}
 		d, f := path.Split(hdr.Name[len(prefix):])
-		if d != dir {
-			continue
-		}
 		if !isDocFile(f) {
 			continue
 		}
-		b, err := ioutil.ReadAll(tr)
-		if err != nil {
-			return nil, err
+		if d == dir {
+			b, err := ioutil.ReadAll(tr)
+			if err != nil {
+				return nil, err
+			}
+			files = append(files, source{
+				f,
+				"http://bazaar.launchpad.net/+branch/" + repo + "/view/head:/" + hdr.Name[len(prefix):],
+				b})
+		} else if strings.HasPrefix(d, dir) {
+			children["launchpad.net/"+repo+"/"+d[:len(d)-1]] = true
 		}
-		files = append(files, source{
-			f,
-			"http://bazaar.launchpad.net/+branch/" + repo + "/view/head:/" + hdr.Name[len(prefix):],
-			b})
 	}
 
-	return buildDoc(importPath, "#L%d", files)
+	return buildDoc(importPath, "#L%d", files, children)
 }

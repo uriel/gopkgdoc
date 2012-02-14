@@ -30,7 +30,7 @@ func cacheGet(c appengine.Context, key string, object interface{}) (*memcache.It
 	case err != nil:
 		item = &memcache.Item{Key: key}
 	case len(item.Value) == 1 && item.Value[0] == 0:
-		// deleted sentiel
+		// deleted sentinel.
 		err = memcache.ErrCacheMiss
 	default:
 		err = gob.NewDecoder(bytes.NewBuffer(item.Value)).Decode(object)
