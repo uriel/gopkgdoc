@@ -381,10 +381,6 @@ func serveHome(w http.ResponseWriter, r *http.Request) error {
 		map[string]interface{}{"importPath": importPath, "suggestions": importPaths})
 }
 
-func redirectQuery(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "/?q="+url.QueryEscape(r.URL.Path), 301)
-}
-
 func serveAbout(w http.ResponseWriter, r *http.Request) error {
 	return executeTemplate(w, "about.html", 200, map[string]interface{}{"Host": r.Host})
 }

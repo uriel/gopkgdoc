@@ -92,26 +92,47 @@ type builder struct {
 // fileImportPaths returns a package name to import path map for the file with
 // filename.
 func (b *builder) fileImportPaths(filename string) map[string]string {
+	// TODO: find name using Package entities in App Engine datastore.
 	importPaths := b.importPaths[filename]
 	if importPaths == nil {
 		importPaths = make(map[string]string)
+		scores := make(map[string]int)
 		b.importPaths[filename] = importPaths
 		for _, i := range b.pkg.Files[filename].Imports {
 			importPath, _ := strconv.Unquote(i.Path.Value)
-			var name string
 			if i.Name != nil {
-				name = i.Name.Name
+				importPaths[i.Name.Name] = importPath
+				scores[i.Name.Name] = 4
 			} else {
-				// TODO: find name using Package entities in App Engine datastore.
-				_, name = path.Split(importPath)
-				switch {
-				case strings.HasPrefix(name, "go-"):
-					name = name[len("go-"):]
-				case strings.HasSuffix(name, ".go"):
-					name = name[:len(name)-len(".go")]
+				// Use heuristics to find one or package names from the last
+				// segment of the import path.
+				_, name := path.Split(importPath)
+
+				if scores[name] <= 1 {
+					if strings.HasPrefix(name, "go") {
+						n := name[len("go"):]
+						importPaths[n] = importPath
+						scores[n] = 1
+					}
+				}
+
+				if scores[name] <= 2 {
+					if strings.HasPrefix(name, "go-") {
+						n := name[len("go-"):]
+						importPaths[n] = importPath
+						scores[n] = 2
+					} else if strings.HasSuffix(name, ".go") {
+						n := name[:len(name)-len(".go")]
+						importPaths[n] = importPath
+						scores[n] = 2
+					}
+				}
+
+				if scores[name] <= 3 {
+					importPaths[name] = importPath
+					scores[name] = 3
 				}
 			}
-			importPaths[name] = importPath
 		}
 	}
 	return importPaths
