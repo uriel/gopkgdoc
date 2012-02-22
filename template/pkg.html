@@ -62,7 +62,7 @@
       {{range .Methods}}<li><a href="#{{$t.Name|html}}.{{.Name|html}}" title="{{.Decl.Text|html}}">func ({{.Recv|html}}) {{.Name|html}}</a>{{end}}
     {{if or .Funcs .Methods}}</ul>{{end}}
 {{end}}
-{{if $.pkgs}}<li><a href="#subdirs">Subdirectiroies</a>{{end}}
+{{if $.pkgs}}<li><a href="#subdirs">Subdirectories</a>{{end}}
 </ul>
 </div>
 
