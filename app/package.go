@@ -27,14 +27,15 @@ import (
 )
 
 const (
-	packageListKey       = "pkglistb1"
-	projectListKeyPrefix = "proj:"
+	packageListKey       = "pkglist2"
+	projectListKeyPrefix = "proj2:"
 )
 
 type Package struct {
 	ImportPath  string `datastore:"-"`
 	Synopsis    string `datastore:",noindex"`
 	PackageName string `datastore:",noindex"`
+	IsCmd       bool   `datastore:",noindex"`
 	Hide        bool
 	IndexTokens []string
 }
@@ -69,6 +70,9 @@ func (pkg *Package) equal(other *Package) bool {
 	if pkg.Hide != other.Hide {
 		return false
 	}
+	if pkg.IsCmd != other.IsCmd {
+		return false
+	}
 	if len(pkg.IndexTokens) != len(other.IndexTokens) {
 		return false
 	}
@@ -88,18 +92,37 @@ func updatePackage(c appengine.Context, pi doc.PathInfo, pdoc *doc.Package) erro
 
 	var pkg *Package
 	if pdoc != nil && pdoc.Name != "" {
+
+		hide := false
+		switch {
+		case doc.IsHiddenPath(importPath):
+			hide = true
+		case strings.HasPrefix(importPath, "code.google.com/p/go/"):
+			// Don't show standard library in package list.
+			hide = true
+		case pdoc.IsCmd:
+			// Hide if command does not have a synopsis or doc with more than one sentence.
+			i := strings.Index(pdoc.Doc, ".")
+			hide = pdoc.Synopsis == "" || i < 0 || i == len(pdoc.Doc)-1
+		default:
+			// Hide if no exports.
+			hide = len(pdoc.Consts) == 0 && len(pdoc.Funcs) == 0 && len(pdoc.Types) == 0 && len(pdoc.Vars) == 0
+		}
+
 		indexTokens := make([]string, 1, 3)
 		indexTokens[0] = strings.ToLower(pi.ProjectPrefix())
-		if !pdoc.Hide {
+		if !hide {
 			indexTokens = append(indexTokens, strings.ToLower(pdoc.Name))
 			if _, name := path.Split(strings.ToLower(pdoc.ImportPath)); name != indexTokens[1] {
 				indexTokens = append(indexTokens, name)
 			}
 		}
+
 		pkg = &Package{
 			Synopsis:    pdoc.Synopsis,
 			PackageName: pdoc.Name,
-			Hide:        pdoc.Hide,
+			IsCmd:       pdoc.IsCmd,
+			Hide:        hide,
 			IndexTokens: indexTokens,
 		}
 	}
@@ -129,7 +152,7 @@ func updatePackage(c appengine.Context, pi doc.PathInfo, pdoc *doc.Package) erro
 				c.Errorf("Delete(%s) -> %v", importPath, err)
 			}
 		} else if !pkg.equal(&storedPackage) {
-			invalidateCache = storedPackage.Synopsis != pkg.Synopsis
+			invalidateCache = true
 			c.Infof("Updating package %s", importPath)
 			if _, err := datastore.Put(c, key, pkg); err != nil {
 				c.Errorf("Put(%s) -> %v", importPath, err)

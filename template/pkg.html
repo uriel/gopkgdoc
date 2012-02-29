@@ -5,15 +5,21 @@
   {{template "CommonHead"}}
   <title>GoPkgDoc: {{.pi.ProjectName|html}}</title>
   <script language="javascript"> 
+    function show(id) {
+      var a = document.getElementById("example_" + id);
+      var d = document.getElementById("d_" + id);
+      d.style.display = "block";
+      a.innerHTML = "☟ <i>Example</i>";
+    }
     function ex(id) {
-      var a = document.getElementById("a_" + id);
+      var a = document.getElementById("example_" + id);
       var d = document.getElementById("d_" + id);
       if (d.style.display === "block") {
         d.style.display = "none";
-        a.innerHTML = "&#9657; Example";
+        a.innerHTML = "☞ <i>Example</i>";
       } else {
         d.style.display = "block";
-        a.innerHTML = "&#9662; Example";
+        a.innerHTML = "☟ <i>Example</i>";
       }
     }
   </script>
@@ -29,10 +35,10 @@
   </div>
 </div>
 
-<div class="container">
+<div class="container spacey">
 {{with .pdoc}}
 {{if .IsCmd}}
-  <h2>Command {{.Name|html}}</h2>
+  <h2>Command {{$.pi|cmdName}}</h2>
   {{.Doc|comment}}
 {{else}}
 
@@ -47,6 +53,7 @@
 
 <h3 id="overview">Overview</h3>
 {{.Doc|comment}}
+{{template "Examples" .}}
 
 <h3 id="index">Index</h3>
 <div style="-webkit-column-count: 2; -moz-column-count: 2; column-count: 2">
@@ -54,12 +61,12 @@
 <li><a href="#files">Package Files</a>
 {{if .Consts}}<li><a href="#constants">Constants</a>{{end}}
 {{if .Vars}}<li><a href="#variables">Variables</a>{{end}}
-{{range .Funcs}}<li><a href="#{{.Name}}" title="{{.Decl.Text|html}}">func {{.Name|html}}</a>{{end}}
+{{range .Funcs}}<li><a href="#{{.Name}}" title="{{.Decl.Text|html}}">func {{.Name|html}}</a>{{template "ExampleLinks" .}}{{end}}
 {{range $t := .Types}}
-<li><a href="#{{.Name|html}}">type {{.Name|html}}</a>
+<li><a href="#{{.Name|html}}">type {{.Name|html}}</a>{{template "ExampleLinks" .}}
     {{if or .Funcs .Methods}}<ul>{{end}}
-      {{range .Funcs}}<li><a href="#{{.Name|html}}" title="{{.Decl.Text|html}}">func {{.Name|html}}</a>{{end}}
-      {{range .Methods}}<li><a href="#{{$t.Name|html}}.{{.Name|html}}" title="{{.Decl.Text|html}}">func ({{.Recv|html}}) {{.Name|html}}</a>{{end}}
+      {{range .Funcs}}<li><a href="#{{.Name|html}}" title="{{.Decl.Text|html}}">func {{.Name|html}}</a>{{template "ExampleLinks" .}}{{end}}
+      {{range .Methods}}<li><a href="#{{$t.Name|html}}.{{.Name|html}}" title="{{.Decl.Text|html}}">func ({{.Recv|html}}) {{.Name|html}}</a>{{template "ExampleLinks" .}}{{end}}
     {{if or .Funcs .Methods}}</ul>{{end}}
 {{end}}
 {{if $.pkgs}}<li><a href="#subdirs">Subdirectories</a>{{end}}
@@ -71,41 +78,41 @@
 
 {{if .Consts}}
 <h3 id="constants">Constants</h3>
-{{range .Consts}}{{.Doc|comment}}<pre>{{.Decl|decl}}</pre>{{end}}
+{{range .Consts}}<pre>{{.Decl|decl}}</pre>{{.Doc|comment}}{{end}}
 {{end}}
 
 {{if .Vars}}
 <h3 id="variables">Variables</h3>
-{{range .Vars}}{{.Doc|comment}}<pre>{{.Decl|decl}}</pre>{{end}}
+{{range .Vars}}<pre>{{.Decl|decl}}</pre>{{.Doc|comment}}{{end}}
 {{end}}
 
 {{range .Funcs}}
 <h3 id="{{.Name|html}}">func <a href="{{.URL|html}}">{{.Name|html}}</a></h3>
 <p><code>{{.Decl|decl}}</code></p>
 {{.Doc|comment}}
-{{template "Examples" map "obj" . "type" ""}}
+{{template "Examples" .}}
 {{end}}
 
 {{range $t := .Types}}
 <h3 id="{{.Name|html}}">type <a href="{{.URL|html}}">{{.Name|html}}</a></h3>
 {{.Doc|comment}}
 <pre>{{.Decl|decl}}</pre>
-{{range .Consts}}{{.Doc|comment}}<pre>{{.Decl|decl}}</pre>{{end}}
-{{range .Vars}}{{.Doc|comment}}<pre>{{.Decl|decl}}</pre>{{end}}
-{{template "Examples" map "obj" . "type" ""}}
+{{range .Consts}}<pre>{{.Decl|decl}}</pre>{{.Doc|comment}}{{end}}
+{{range .Vars}}<pre>{{.Decl|decl}}</pre>{{.Doc|comment}}{{end}}
+{{template "Examples" .}}
 
 {{range .Funcs}}
 <h4 id="{{.Name|html}}">func <a href="{{.URL|html}}">{{.Name|html}}</a></h4>
 <p><code>{{.Decl|decl}}</code></p>
 {{.Doc|comment}}
-{{template "Examples" map "obj" . "type" $t}}
+{{template "Examples" .}}
 {{end}}
 
 {{range .Methods}}
 <h4 id="{{$t.Name|html}}.{{.Name|html}}">func ({{.Recv|html}}) <a href="{{.URL|html}}">{{.Name|html}}</a></h4>
 <p><code>{{.Decl|decl}}</code></p>
 {{.Doc|comment}}
-{{template "Examples" map "obj" . "type" $t}}
+{{template "Examples" .}}
 {{end}}
 
 {{end}}
@@ -113,11 +120,30 @@
 {{end}}
 {{end}}
 
-{{if .pkgs}}<h3 id="subdirs">Subdirectories</h3>{{template "PackageList" map "pkgs" .pkgs "parentPath" .pi.ImportPath}}{{end}}
+{{if or .pkgs .cmds}}<h3 id="subdirs">Subdirectories</h3>
+  {{with .pkgs}}
+    <h4>Packages</h4>
+    <table class="table table-condensed">
+    <thead><tr><th>Path</th><th>Synopsis</th></tr></thead>
+    <tbody>{{range .}}<tr><td><a href="/pkg/{{.ImportPath|html}}">{{relativePath .ImportPath $.pi.ImportPath}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
+    </table>
+  {{end}}
+  {{with .cmds}}
+    <h4>Commands</h4>
+    <table class="table table-condensed">
+    <thead><tr><th>Path</th><th>Synopsis</th></tr></thead>
+    <tbody>{{range .}}<tr><td><a href="/pkg/{{.ImportPath|html}}">{{relativePath .ImportPath $.pi.ImportPath}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
+    </table>
+  {{end}}
+{{end}}
 
 <div class="page-footer">
   <p class="pull-right"><a href="#">Back to top</a></p>
-  <p>GoPkgDoc generated this page from the <a href="{{.pi.ProjectURL|html}}">{{.pi.ProjectName|html}} source code</a> {{.pdoc.Updated|relativeTime}}.
+  <form name="refresh" method="POST" action="/a/refresh" class="form-inline">
+    <p>GoPkgDoc generated this page from the <a href="{{.pi.ProjectURL|html}}">{{.pi.ProjectName|html}} source code</a> {{.pdoc.Updated|relativeTime}}. 
+    <a href="javascript:document.refresh.submit();" title="Refresh this page from the source">⟲</a>
+    <input type="hidden" name="importPath" value="{{.pi.ImportPath|html}}">
+  </form>
 </div>
 
 </div>
@@ -126,15 +152,15 @@
 </html>
 {{end}}
 
-{{define "Examples"}}{{if len .obj.Examples}}
-<p><a class="ex" id="a_{{if .type}}{{.type.Name|html}}_{{end}}{{.obj.Name|html}}" href="javascript:ex('{{if .type}}{{.type.Name|html}}_{{end}}{{.obj.Name|html}}')">&#9657; Example</a>
-<div  id="d_{{if .type}}{{.type.Name|html}}_{{end}}{{.obj.Name|html}}" style="display:none;">
-{{range .obj.Examples}}<pre>{{if .Output}}<strong>Code:</strong>
-          
-{{end}}{{.Code|html}}{{if .Output}}
+{{define "ExampleLinks"}}{{range .Examples}} <a href="#example_{{.Name|html}}" title="Go to example" onclick="show('{{.Name|html}}')">☞ </a>{{end}}{{end}}
 
-<strong>Output:</strong>
-
-{{.Output|html}}{{end}}</pre>{{end}}
-</div> 
-{{end}}{{end}}
+{{define "Examples"}}{{range .Examples}}
+<p><a id="example_{{.Name|html}}" href="javascript:ex('{{.Name|html}}');">☞ <i>Example</i></a>
+<div id="d_{{.Name|html}}" style="display:none;" class="ex">
+  {{with .Doc}}<p>{{.|comment}}{{end}}
+  {{if .Output}}<p>Code:{{end}}
+  <pre>{{.Code|html}}</pre>
+  {{with .Output}}<p>Output:<pre>{{.|html}}</pre>{{end}}
+</div>
+{{end}}
+{{end}}

@@ -1,0 +1,49 @@
+{{define "index.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  {{template "CommonHead"}}
+  <title>GoPkgDoc: Index</title>
+</head>
+
+<body>
+
+{{template "NavBar" "index"}}
+
+<div class="page-header">
+  <div class="container">
+    <h1>Index <small><a href="#packages">Packages</a> and <a href="#commands">commands</a> visited on GoPkgDoc</small></h1>
+  </div>
+</div>
+
+<div class="container spacey">
+
+  {{with .pkgs}}
+    <h3 id="packages">Packages</h3>
+    <table class="table table-condensed">
+    <thead><tr><th>Path</th><th>Synopsis</th></tr></thead>
+    <tbody>{{range .}}<tr><td><a href="/pkg/{{.ImportPath|html}}">{{.ImportPath|html}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
+    </table>
+  {{end}}
+
+  {{with .cmds}}
+    <h3 id="commands">Commands</h3>
+    <table class="table table-condensed">
+    <thead><tr><th>Path</th><th>Synopsis</th></tr></thead>
+    <tbody>{{range .}}<tr><td><a href="/pkg/{{.ImportPath|html}}">{{.ImportPath|html}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
+    </table>
+  {{end}}
+
+  <div class="page-footer">
+    <p class="pull-right"><a href="#">Back to top</a></p>
+    <p>Number of packages: {{len .pkgs}}.  Number of commands: {{len .cmds}}.
+    <p>Packages and commands with sparse documentation are not included in the index. 
+    To add a package to GoPkgDoc, submit the package import path from the GoPkgDoc <a
+      href="/">home page</a>. 
+  </div>
+
+</div>
+
+</body>
+</html>
+{{end}}

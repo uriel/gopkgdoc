@@ -1,0 +1,44 @@
+{{define "dir.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  {{template "CommonHead"}}
+  <title>GoPkgDoc: {{.pi.ImportPath|html}}</title>
+</head>
+
+<body>
+
+{{template "NavBar" ""}}
+
+<div class="page-header">
+  <div class="container">
+    <h1><a href="{{.pi.ProjectURL|html}}">{{.pi.ProjectName|html}}</a> <small>{{.pi|pathInfo}}</small></h1>
+  </div>
+</div>
+
+<div class="container spacey">
+
+  {{with .pkgs}}
+    <h3>Packages</h3>
+    <table class="table table-condensed">
+    <thead><tr><th>Path</th><th>Synopsis</th></tr></thead>
+    <tbody>{{range .}}<tr><td><a href="/pkg/{{.ImportPath|html}}">{{relativePath .ImportPath $.pi.ImportPath}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
+    </table>
+  {{end}}
+
+  {{with .cmds}}
+    <h3>Commands</h3>
+    <table class="table table-condensed">
+    <thead><tr><th>Path</th><th>Synopsis</th></tr></thead>
+    <tbody>{{range .}}<tr><td><a href="/pkg/{{.ImportPath|html}}">{{relativePath .ImportPath $.pi.ImportPath}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
+    </table>
+  {{end}}
+
+  <div class="page-footer">
+    <p class="pull-right"><a href="#">Back to top</a></p>
+  </div>
+
+</div>
+</body>
+</html>
+{{end}}

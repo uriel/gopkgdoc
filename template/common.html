@@ -1,27 +1,6 @@
 {{define "CommonHead"}}
 <meta charset="utf-8">
-<link href="{{staticURL "/static/bootstrap.css"}}" rel="stylesheet">
-<style type="text/css">
-h1 small a { color: inherit }
-.ex { color: inherit }
-code { 
-  background-color: white; 
-  border: none; 
-  color: inherit; 
-  padding: 0;
-}
-.page-header {
-  background-color: #f5f5f5; 
-  margin: -18px 0 10px 0;
-  padding: 10px 0 10px 0;
-  border-bottom:  1px solid #ddd;
-}
-.page-footer {
-  margin: 8px 0 0 0;
-  padding: 12px 0 8px 0;
-  border-top:  1px solid #ddd;
-}
-</style>
+<link href="/static/css/bootstrap.css?s" rel="stylesheet">
 {{end}}
 
 {{define "NavBar"}}
@@ -31,20 +10,10 @@ code {
       <a class="brand" href="/">GoPkgDoc</a>
       <ul class="nav">
         <li{{if equal . "home"}} class="active"{{end}}><a href="/">Home</a></li>
-        <li{{if equal . "packages"}} class="active"{{end}}><a href="/packages">Packages</a></li>
+        <li{{if equal . "index"}} class="active"{{end}}><a href="/index">Index</a></li>
         <li{{if equal . "about"}} class="active"{{end}}><a href="/about">About</a></li>
       </ul>
     </div>
   </div>
 </div>
-{{end}}
-
-{{define "PackageList"}}
-<div class="container">
-<table class="table table-condensed">
-  <thead><tr><th>Path</th><th>Synopsis</th></thead>
-  <tbody>
-    {{range .pkgs}}<tr><td><a href="/pkg/{{.ImportPath|html}}">{{relativePath .ImportPath $.parentPath}}</a><td>{{.Synopsis|comment}}</td></tr>{{end}}
-  </tbody>
-</table>
 {{end}}

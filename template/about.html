@@ -12,14 +12,19 @@
 <div class="container">
 
   <div class="row">
-    <div class="span4">
-      <h4>About</h4> <p>GoPkgDoc displays documentation for Go packages on
-      Bitbucket, Github, Launchpad and Google Project Hosting.  <p>The GoPkgDoc
-      source code is <a href="https://github.com/garyburd/gopkgdoc">hosted on
+    <div class="span6">
+      <h4>About</h4> 
+      <p>GoPkgDoc displays documentation for <a
+        href="http://golang.org/">Go</a> packages on <a href="https://bitbucket.org/">Bitbucket</a>, <a href="https://github.com/">Github</a>,
+      <a href="https://launchpad.net/">Launchpad</a> and <a href="http://code.google.com/hosting/">Google Project Hosting</a>.  
+      
+      <p>GoPkgDoc is hosted on <a
+        href="http://code.google.com/appengine/">Google App Engine</a>. The
+      source code available <a href="https://github.com/garyburd/gopkgdoc">on
         Github</a>.  
     </div>
 
-    <div class="span4">
+    <div class="span6">
       <h4>Feedback</h4>
       <p>Send your ideas, feature requests and questions to the author via <a
         href="https://github.com/inbox/new?to=garyburd">Github</a> or <a
@@ -29,7 +34,19 @@
         Tracker</a>.
     </div>
 
-    <div class="span4">
+  </div><div class="row">
+
+    <div class="span6">
+      <h4>News</h4>
+      <ul>
+        <li>2/22/2012: Handle Git repositories on Bitbucket.
+        <li>2/26/2012: Add refresh button to package pages.
+        <li>3/9/2012: Improve logic for detecting commands.
+        <li>3/9/2012: Customize <a href="http://twitter.github.com/bootstrap">Boostrap</a> for GoPkgDoc.
+      </ul>
+    </div>
+
+    <div class="span6">
       <h4>Bookmarklet</h4>
       <p>The GoPkgDoc bookmarklet navigates from pages on Bitbucket, Github
       Launchpad and Google Project Hosting to the package documentation. To
@@ -37,6 +54,7 @@
       bar: 
       <a href="javascript:window.location='http://{{.Host|html}}/?q='+encodeURIComponent(window.location)">GoPkgDoc</a>
     </div>
+
   </div>
 
 </div>

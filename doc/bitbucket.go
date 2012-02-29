@@ -43,9 +43,23 @@ func (m bitbucketPathInfo) Package(client *http.Client) (*Package, error) {
 		dir = dir[1:] + "/"
 	}
 
-	p, err := httpGet(client, "https://api.bitbucket.org/1.0/repositories/"+userRepo+"/src/tip/"+dir, nil, true)
-	if err != nil {
-		return nil, err
+	// Find the revision tag for tip and fetch the directory listing for that
+	// tag.  Mercurial repositories use the tag "tip". Git repositories use the
+	// tag "master".
+	var tag string
+	var p []byte
+	for _, t := range []string{"tip", "master"} {
+		var err error
+		p, err = httpGet(client, "https://api.bitbucket.org/1.0/repositories/"+userRepo+"/src/"+t+"/"+dir, nil, true)
+		if err == nil {
+			tag = t
+			break
+		} else if err != ErrPackageNotFound {
+			return nil, err
+		}
+	}
+	if tag == "" {
+		return nil, ErrPackageNotFound
 	}
 
 	var directory struct {
@@ -53,7 +67,7 @@ func (m bitbucketPathInfo) Package(client *http.Client) (*Package, error) {
 			Path string
 		}
 	}
-	err = json.Unmarshal(p, &directory)
+	err := json.Unmarshal(p, &directory)
 	if err != nil {
 		return nil, err
 	}
@@ -63,8 +77,8 @@ func (m bitbucketPathInfo) Package(client *http.Client) (*Package, error) {
 		if isDocFile(f.Path) {
 			files = append(files, source{
 				f.Path,
-				"https://bitbucket.org/" + userRepo + "/src/tip/" + f.Path,
-				"https://api.bitbucket.org/1.0/repositories/" + userRepo + "/raw/tip/" + f.Path,
+				"https://bitbucket.org/" + userRepo + "/src/" + tag + "/" + f.Path,
+				"https://api.bitbucket.org/1.0/repositories/" + userRepo + "/raw/" + tag + "/" + f.Path,
 			})
 		}
 	}

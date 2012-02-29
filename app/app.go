@@ -24,6 +24,7 @@ import (
 	"bytes"
 	"doc"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"path"
@@ -35,8 +36,20 @@ import (
 )
 
 const (
-	docKeyPrefix = "docb2:"
+	docKeyPrefix = "doc3:"
 )
+
+func filterCmds(in []*Package) (out []*Package, cmds []*Package) {
+	out = in[0:0]
+	for _, pkg := range in {
+		if pkg.IsCmd {
+			cmds = append(cmds, pkg)
+		} else {
+			out = append(out, pkg)
+		}
+	}
+	return
+}
 
 // getDoc gets the package documentation and child packages for the given import path.
 func getDoc(c appengine.Context, importPath string) (*doc.Package, []*Package, error) {
@@ -57,12 +70,13 @@ func getDoc(c appengine.Context, importPath string) (*doc.Package, []*Package, e
 		return nil, nil, err
 	}
 
-	// Filter project packages to children of this package.
+	// Restrict list of packages to children of this package. Remove hidden
+	// packages.
 
 	prefix := importPath + "/"
 	pkgs := projectPkgs[0:0]
 	for _, pkg := range projectPkgs {
-		if strings.HasPrefix(pkg.ImportPath, prefix) {
+		if strings.HasPrefix(pkg.ImportPath, prefix) && !doc.IsHiddenPath(pkg.ImportPath) {
 			pkgs = append(pkgs, pkg)
 		}
 	}
@@ -74,6 +88,7 @@ func getDoc(c appengine.Context, importPath string) (*doc.Package, []*Package, e
 	item, err := cacheGet(c, cacheKey, &pdoc)
 	switch err {
 	case memcache.ErrCacheMiss:
+		c.Infof("Fetching %s from source.", importPath)
 		pdoc, err = pi.Package(urlfetch.Client(c))
 		switch err {
 		case doc.ErrPackageNotFound:
@@ -82,12 +97,7 @@ func getDoc(c appengine.Context, importPath string) (*doc.Package, []*Package, e
 				pdoc = &doc.Package{}
 			}
 		case nil:
-			// Fix standard packages.
-			const standardPackagesPrefix = "code.google.com/p/go/src/pkg/"
-			if strings.HasPrefix(pdoc.ImportPath, standardPackagesPrefix) {
-				pdoc.ImportPath = pdoc.ImportPath[len(standardPackagesPrefix):]
-				pdoc.Hide = true
-			}
+			// ok
 		default:
 			return nil, nil, err
 		}
@@ -111,7 +121,7 @@ func getDoc(c appengine.Context, importPath string) (*doc.Package, []*Package, e
 
 	if pdoc != nil {
 
-		// Merge document children into package list loaded from datastore.
+		// Merge document children with package list loaded from datastore.
 
 		m := make(map[string]*Package, len(pkgs)+len(pdoc.Children))
 		for _, pkg := range pkgs {
@@ -190,30 +200,57 @@ func servePackage(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
+	pkgs, cmds := filterCmds(pkgs)
+
 	if pdoc == nil {
-		return executeTemplate(w, "packages.html", 200, map[string]interface{}{
+		return executeTemplate(w, "dir.html", 200, map[string]interface{}{
 			"pkgs": pkgs,
+			"cmds": cmds,
 			"pi":   doc.NewPathInfo(importPath),
 		})
 	}
 
 	return executeTemplate(w, "pkg.html", 200, map[string]interface{}{
 		"pkgs": pkgs,
+		"cmds": cmds,
 		"pdoc": pdoc,
 		"pi":   doc.NewPathInfo(importPath),
 	})
 }
 
-func servePackages(w http.ResponseWriter, r *http.Request) error {
+func serveClearPackageCache(w http.ResponseWriter, r *http.Request) error {
+	if r.Method != "POST" {
+		http.Error(w, "Method not supported.", http.StatusMethodNotAllowed)
+		return nil
+	}
+	c := appengine.NewContext(r)
+	importPath := r.FormValue("importPath")
+	cacheKey := docKeyPrefix + importPath
+	err := memcache.Delete(c, cacheKey)
+	c.Infof("memcache.Delete(%s) -> %v", cacheKey, err)
+	http.Redirect(w, r, "/pkg/"+importPath, 302)
+	return nil
+}
+
+func serveIndex(w http.ResponseWriter, r *http.Request) error {
 	c := appengine.NewContext(r)
 	pkgs, err := queryPackages(c, packageListKey, datastore.NewQuery("Package").Filter("Hide=", false))
 	if err != nil {
 		return err
 	}
-	return executeTemplate(w, "packages.html", 200, map[string]interface{}{"pkgs": pkgs})
+	pkgs, cmds := filterCmds(pkgs)
+	return executeTemplate(w, "index.html", 200, map[string]interface{}{
+		"pkgs": pkgs,
+		"cmds": cmds,
+	})
 }
 
-func serveAPIPackages(w http.ResponseWriter, r *http.Request) error {
+func servePackages(w http.ResponseWriter, r *http.Request) error {
+	http.Redirect(w, r, "/index", 301)
+	return nil
+}
+
+func serveAPIIndex(w http.ResponseWriter, r *http.Request) error {
 	c := appengine.NewContext(r)
 	keys, err := datastore.NewQuery("Package").KeysOnly().GetAll(c, nil)
 	if err != nil {
@@ -228,6 +265,28 @@ func serveAPIPackages(w http.ResponseWriter, r *http.Request) error {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	_, err = w.Write(buf.Bytes())
 	return err
+}
+
+func serveAPIUpdate(w http.ResponseWriter, r *http.Request) error {
+	if r.Method != "POST" {
+		http.Error(w, "Method not supported.", http.StatusMethodNotAllowed)
+		return nil
+	}
+	pi := doc.NewPathInfo(r.FormValue("importPath"))
+	if pi == nil {
+		http.Error(w, "Not found.", http.StatusNotFound)
+		return nil
+	}
+	c := appengine.NewContext(r)
+	pdoc, err := pi.Package(urlfetch.Client(c))
+	if err != nil && err != doc.ErrPackageNotFound {
+		return err
+	}
+	if err := updatePackage(c, pi, pdoc); err != nil {
+		return err
+	}
+	io.WriteString(w, "OK")
+	return nil
 }
 
 func importPathFromGoogleBrowse(m []string) string {
@@ -267,22 +326,27 @@ var importPathCleaners = []struct {
 	fn  func([]string) string
 }{
 	{
+		// Github source browser.
 		regexp.MustCompile(`^https?:/+github\.com/([^/]+)/([^/]+)/tree/master/(.*)$`),
 		func(m []string) string { return fmt.Sprintf("github.com/%s/%s/%s", m[1], m[2], m[3]) },
 	},
 	{
+		// Bitbucket source borwser.
 		regexp.MustCompile(`^https?:/+bitbucket\.org/([^/]+)/([^/]+)/src/[^/]+/(.*)$`),
 		func(m []string) string { return fmt.Sprintf("bitbucket.org/%s/%s/%s", m[1], m[2], m[3]) },
 	},
 	{
+		// Google Project Hosting source browser.
 		regexp.MustCompile(`^http:/+code\.google\.com/p/([^/]+)/source/browse(/[^?#]*)?(\?[^#]*)?(#.*)?$`),
 		importPathFromGoogleBrowse,
 	},
 	{
+		// Launchpad source browser.
 		regexp.MustCompile(`^https?:/+bazaar\.(launchpad\.net/.*)/files$`),
 		func(m []string) string { return m[1] },
 	},
 	{
+		// http or https prefix.
 		regexp.MustCompile(`^https?:/+(.*)$`),
 		func(m []string) string { return m[1] },
 	},
@@ -391,9 +455,12 @@ func init() {
 
 	http.Handle("/", handlerFunc(serveHome))
 	http.Handle("/about", handlerFunc(serveAbout))
+	http.Handle("/index", handlerFunc(serveIndex))
 	http.Handle("/packages", handlerFunc(servePackages))
 	http.Handle("/pkg/", handlerFunc(servePackage))
-	http.Handle("/api/packages", handlerFunc(serveAPIPackages))
+	http.Handle("/a/refresh", handlerFunc(serveClearPackageCache))
+	http.Handle("/api/index", handlerFunc(serveAPIIndex))
+	http.Handle("/api/update", handlerFunc(serveAPIUpdate))
 
 	// To avoid errors, register handler for the previously documented Github
 	// post-receive hook. Consider clearing cache from the hook.

@@ -19,17 +19,14 @@ package app
 import (
 	"appengine"
 	"bytes"
-	"crypto/md5"
 	"doc"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	godoc "go/doc"
-	"io/ioutil"
 	"net/http"
+	"path"
 	"reflect"
 	"strings"
-	"sync"
 	"text/template"
 	"time"
 )
@@ -49,7 +46,7 @@ func mapFmt(kvs ...interface{}) (map[string]interface{}, error) {
 	return m, nil
 }
 
-// relativePathFmt formats an import path as html.
+// relativePathFmt formats an import path as HTML.
 func relativePathFmt(importPath string, parentPath interface{}) string {
 	if p, ok := parentPath.(string); ok && p != "" && strings.HasPrefix(importPath, p) {
 		importPath = importPath[len(p)+1:]
@@ -115,6 +112,12 @@ func declFmt(decl doc.Decl) string {
 	return buf.String()
 }
 
+// cmdNameFmt formats a doc.PathInfo as a command name.
+func cmdNameFmt(pi doc.PathInfo) string {
+	_, name := path.Split(pi.ImportPath())
+	return template.HTMLEscapeString(name)
+}
+
 // pathInfoFmt formats a doc.PathInfo with breadcrumb links.
 func pathInfoFmt(pi doc.PathInfo) string {
 	importPath := []byte(pi.ImportPath())
@@ -135,33 +138,6 @@ func pathInfoFmt(pi doc.PathInfo) string {
 	}
 	template.HTMLEscape(&buf, importPath[i:])
 	return buf.String()
-}
-
-var (
-	staticMutex sync.RWMutex
-	staticHash  = make(map[string]string)
-)
-
-func staticURL(path string) string {
-	staticMutex.RLock()
-	h, ok := staticHash[path]
-	staticMutex.RUnlock()
-
-	if !ok {
-		p, err := ioutil.ReadFile(path[1:])
-		if err != nil {
-			return path
-		}
-
-		m := md5.New()
-		m.Write(p)
-		h = hex.EncodeToString(m.Sum(nil))
-
-		staticMutex.Lock()
-		staticHash[path] = h
-		staticMutex.Unlock()
-	}
-	return path + "?v=" + h
 }
 
 func executeTemplate(w http.ResponseWriter, name string, status int, data interface{}) error {
@@ -189,13 +165,13 @@ func parseTemplates() (*template.Template, error) {
 	}
 	set.Funcs(template.FuncMap{
 		"comment":      commentFmt,
+		"cmdName":      cmdNameFmt,
 		"decl":         declFmt,
-		"relativeTime": relativeTime,
-		"staticURL":    staticURL,
 		"equal":        reflect.DeepEqual,
-		"relativePath": relativePathFmt,
 		"map":          mapFmt,
 		"pathInfo":     pathInfoFmt,
+		"relativePath": relativePathFmt,
+		"relativeTime": relativeTime,
 	})
 	return set.ParseGlob("template/*.html")
 }
