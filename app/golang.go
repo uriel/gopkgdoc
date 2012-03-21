@@ -16,7 +16,7 @@
 
 package app
 
-const standardPackagePath = "http://weekly.golang.org/pkg/"
+const standardPackagePath = "http://golang.org/pkg/"
 
 // go list -f '"{{.ImportPath}}": true,'  
 var standardPackages = map[string]bool{

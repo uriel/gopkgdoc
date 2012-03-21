@@ -112,8 +112,8 @@ func declFmt(decl doc.Decl) string {
 	return buf.String()
 }
 
-// cmdNameFmt formats a doc.PathInfo as a command name.
-func cmdNameFmt(pi doc.PathInfo) string {
+// pathLastFmt returns the last element of the path as html.
+func pathLastFmt(pi doc.PathInfo) string {
 	_, name := path.Split(pi.ImportPath())
 	return template.HTMLEscapeString(name)
 }
@@ -165,7 +165,7 @@ func parseTemplates() (*template.Template, error) {
 	}
 	set.Funcs(template.FuncMap{
 		"comment":      commentFmt,
-		"cmdName":      cmdNameFmt,
+		"pathLast":     pathLastFmt,
 		"decl":         declFmt,
 		"equal":        reflect.DeepEqual,
 		"map":          mapFmt,

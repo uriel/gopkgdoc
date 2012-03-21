@@ -152,11 +152,12 @@ func (b *builder) fileImportPaths(filename string) map[string]string {
 				}
 
 				if scores[name] <= 2 {
-					if strings.HasPrefix(name, "go-") {
+                    switch {
+                    case strings.HasPrefix(name, "go-") || strings.HasPrefix(name, "go."):
 						n := name[len("go-"):]
 						importPaths[n] = importPath
 						scores[n] = 2
-					} else if strings.HasSuffix(name, ".go") {
+                    case strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "-go"):
 						n := name[:len(name)-len(".go")]
 						importPaths[n] = importPath
 						scores[n] = 2
@@ -529,7 +530,7 @@ func buildDoc(importPath string, lineFmt string, files []source, children map[st
 			name := src.Name.Name
 			pkg, found := pkgs[name]
 			if !found {
-                pkg = &ast.Package{Name:name, Files:make(map[string]*ast.File)}
+				pkg = &ast.Package{Name: name, Files: make(map[string]*ast.File)}
 				pkgs[name] = pkg
 			}
 			pkg.Files[f.Filename] = src
@@ -557,7 +558,7 @@ func buildDoc(importPath string, lineFmt string, files []source, children map[st
 		return nil, ErrPackageNotFound
 	}
 
-	// Determine if the directory contains an application main function.  This
+	// Determine if the directory contains an application main function. This
 	// check must be done before the AST is filtered by the call to
 	// ast.PackageExports below.
 	hasApplicationMain := false

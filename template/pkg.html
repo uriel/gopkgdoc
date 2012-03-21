@@ -3,7 +3,7 @@
 <html lang="en">
 <head>
   {{template "CommonHead"}}
-  <title>GoPkgDoc: {{.pi.ProjectName|html}}</title>
+  <title>{{with .pdoc}}{{if .IsCmd}}{{$.pi|pathLast}}{{else}}{{.Name|html}}{{end}}{{end}} - GoPkgDoc</title>
   <script language="javascript"> 
     function show(id) {
       var a = document.getElementById("example_" + id);
@@ -38,7 +38,7 @@
 <div class="container spacey">
 {{with .pdoc}}
 {{if .IsCmd}}
-  <h2>Command {{$.pi|cmdName}}</h2>
+  <h2>Command {{$.pi|pathLast}}</h2>
   {{.Doc|comment}}
 {{else}}
 
