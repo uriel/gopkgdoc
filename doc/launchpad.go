@@ -28,33 +28,10 @@ import (
 
 var launchpadPattern = regexp.MustCompile(`^launchpad\.net/(([a-z0-9A-Z_.\-]+)(/[a-z0-9A-Z_.\-]+)?|~[a-z0-9A-Z_.\-]+/(\+junk|[a-z0-9A-Z_.\-]+)/[a-z0-9A-Z_.\-]+)(/[a-z0-9A-Z_.\-/]+)*$`)
 
-type launchpadPathInfo []string
-
-func newLaunchpadPathInfo(m []string) PathInfo { return launchpadPathInfo(m) }
-func (m launchpadPathInfo) ImportPath() string { return m[0] }
-func (m launchpadPathInfo) ProjectPrefix() string {
-	if m[2] != "" {
-		return "launchpad.net/" + m[2]
-	}
-	return "launchpad.net/" + m[1]
-}
-func (m launchpadPathInfo) ProjectName() string {
-	if m[2] != "" {
-		return m[2]
-	}
-	return m[1]
-}
-func (m launchpadPathInfo) ProjectURL() string {
-	if m[2] != "" {
-		return "https://launchpad.net/" + m[2] + "/"
-	}
-	return "https://launchpad.net/" + m[1] + "/"
-}
-
-func (m launchpadPathInfo) Package(client *http.Client) (*Package, error) {
+func getLaunchpadDoc(client *http.Client, m []string, etag string) (*Package, error) {
 
 	if m[2] != "" && m[3] != "" {
-		_, err := httpGet(client, "https://code.launchpad.net/"+m[2]+m[3]+"/.bzr/branch-format", nil, true)
+		_, err := httpGet(client, "https://code.launchpad.net/"+m[2]+m[3]+"/.bzr/branch-format", nil, notFoundNotFound)
 		switch err {
 		case ErrPackageNotFound:
 			// The structure of the import path is is launchpad.net/{project}/{dir}.
@@ -69,13 +46,20 @@ func (m launchpadPathInfo) Package(client *http.Client) (*Package, error) {
 	}
 
 	importPath := m[0]
+	projectName := m[2]
+	if projectName == "" {
+		projectName = m[1]
+	}
+	projectPrefix := "launchpad.net/" + projectName
+	projectURL := "https://launchpad.net/" + projectName + "/"
+
 	repo := m[1]
 	dir := m[5]
 	if len(dir) > 0 {
 		dir = dir[1:] + "/"
 	}
 
-	p, err := httpGet(client, "http://bazaar.launchpad.net/+branch/"+repo+"/tarball", nil, true)
+	p, err := httpGet(client, "http://bazaar.launchpad.net/+branch/"+repo+"/tarball", nil, notFoundNotFound)
 	if err != nil {
 		return nil, err
 	}
@@ -89,8 +73,7 @@ func (m launchpadPathInfo) Package(client *http.Client) (*Package, error) {
 	tr := tar.NewReader(gzr)
 
 	prefix := "+branch/" + repo + "/"
-	var files []source
-	children := make(map[string]bool)
+	var files []*source
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -111,14 +94,12 @@ func (m launchpadPathInfo) Package(client *http.Client) (*Package, error) {
 			if err != nil {
 				return nil, err
 			}
-			files = append(files, source{
-				f,
-				"http://bazaar.launchpad.net/+branch/" + repo + "/view/head:/" + hdr.Name[len(prefix):],
-				b})
-		} else if strings.HasPrefix(d, dir) {
-			children["launchpad.net/"+repo+"/"+d[:len(d)-1]] = true
+			files = append(files, &source{
+				name:      f,
+				browseURL: "http://bazaar.launchpad.net/+branch/" + repo + "/view/head:/" + hdr.Name[len(prefix):],
+				data:      b})
 		}
 	}
 
-	return buildDoc(importPath, "#L%d", files, children)
+	return buildDoc(importPath, projectPrefix, projectName, projectURL, etag, "#L%d", files)
 }

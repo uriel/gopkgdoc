@@ -16,6 +16,7 @@ package doc
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -23,44 +24,50 @@ import (
 
 // service represents a source code control service.
 type service struct {
-	pattern     *regexp.Regexp
-	newPathInfo func([]string) PathInfo
-	prefix      string
+	pattern *regexp.Regexp
+	getDoc  func(*http.Client, []string, string) (*Package, error)
+	prefix  string
 }
 
 // services is the list of source code control services handled by gopkgdoc.
 var services = []*service{
-	&service{githubPattern, newGithubPathInfo, "github.com/"},
-	&service{googlePattern, newGooglePathInfo, "code.google.com/"},
-	&service{bitbucketPattern, newBitbucketPathInfo, "bitbucket.org/"},
-	&service{launchpadPattern, newLaunchpadPathInfo, "launchpad.net/"},
+	&service{githubPattern, getGithubDoc, "github.com/"},
+	&service{googlePattern, getGoogleDoc, "code.google.com/"},
+	&service{bitbucketPattern, getBitbucketDoc, "bitbucket.org/"},
+	&service{launchpadPattern, getLaunchpadDoc, "launchpad.net/"},
 }
 
-// Path represents an import path.
-type PathInfo interface {
-	ImportPath() string
-	ProjectPrefix() string
-	ProjectName() string
-	ProjectURL() string
-	Package(*http.Client) (*Package, error)
-}
-
-// NewPath returns information about a path or nil the path is not valid. 
-func NewPathInfo(importPath string) PathInfo {
-	for _, s := range services {
-		if m := s.pattern.FindStringSubmatch(importPath); m != nil {
-			return s.newPathInfo(m)
-		}
+func Get(client *http.Client, importPath string, etag string) (*Package, error) {
+	if StandardPackages[importPath] {
+		return getStandardDoc(client, importPath, etag)
 	}
-	return nil
+	for _, s := range services {
+		if !strings.HasPrefix(importPath, s.prefix) {
+			continue
+		}
+		m := s.pattern.FindStringSubmatch(importPath)
+		if m == nil && s.prefix != "" {
+			// Import path is bad if prefix matches and regexp does not.
+			return nil, ErrPackageNotFound
+		}
+		log.Println("!!!!!!!!")
+		return s.getDoc(client, m, etag)
+	}
+	log.Println("XXXXXXX!")
+	return nil, ErrPackageNotFound
 }
 
-// Package not found.
-var ErrPackageNotFound = errors.New("package not found")
+var (
+	ErrPackageNotFound    = errors.New("package not found")
+	ErrPackageNotModified = errors.New("package not modified")
+)
 
 // IsSupportedService returns true if the source code control service for
 // import path is supported by this package.
 func IsSupportedService(importPath string) bool {
+	if StandardPackages[importPath] {
+		return true
+	}
 	for _, s := range services {
 		if strings.HasPrefix(importPath, s.prefix) {
 			return true

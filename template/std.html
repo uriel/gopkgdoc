@@ -1,0 +1,39 @@
+{{define "std.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  {{template "CommonHead"}}
+  <title>Standard Packages - GoPkgDoc</title>
+</head>
+
+<body>
+
+{{template "NavBar" ""}}
+
+<div class="page-header">
+  <div class="container">
+    <h1>Standard Packages</h1>
+  </div>
+</div>
+
+<div class="container spacey">
+
+  <h2></h2>
+
+  {{with .pkgs}}
+    <table class="table table-condensed">
+    <thead><tr><th>Path</th><th>Synopsis</th></tr></thead>
+    <tbody>{{range .}}<tr><td><a href="/pkg/{{.ImportPath|html}}">{{.ImportPath|importPath}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
+    </table>
+  {{end}}
+
+  <div class="page-footer">
+    <p class="pull-right"><a href="#">Back to top</a></p>
+    View the official documentation at <a href="http://golang.org/pkg/">golang.org</a>.
+  </div>
+
+</div>
+
+</body>
+</html>
+{{end}}

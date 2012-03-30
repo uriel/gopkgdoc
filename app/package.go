@@ -20,7 +20,9 @@ import (
 	"appengine"
 	"appengine/datastore"
 	"appengine/memcache"
+	"bytes"
 	"doc"
+	"encoding/gob"
 	"path"
 	"strings"
 	"time"
@@ -40,6 +42,35 @@ type Package struct {
 	IndexTokens []string
 }
 
+type Doc struct {
+	Version string `datastore:",noindex"`
+	Gob     []byte `datastore:",noindex"`
+}
+
+func loadDoc(c appengine.Context, importPath string) (*doc.Package, string, error) {
+	var d Doc
+	err := datastore.Get(c, datastore.NewKey(c, "Doc", importPath, 0, nil), &d)
+	if err == datastore.ErrNoSuchEntity {
+		return nil, "", nil
+	}
+	if err != nil {
+		return nil, "", err
+	}
+	if d.Version != doc.PackageVersion {
+		return nil, "", nil
+	}
+	var p doc.Package
+	err = gob.NewDecoder(bytes.NewBuffer(d.Gob)).Decode(&p)
+	return &p, p.Etag, err
+}
+
+func removeDoc(c appengine.Context, importPath string) {
+	err := datastore.Delete(c, datastore.NewKey(c, "Doc", importPath, 0, nil))
+	if err != nil && err != datastore.ErrNoSuchEntity {
+		c.Errorf("Delete(%s) -> %v", importPath, err)
+	}
+}
+
 func queryPackages(c appengine.Context, cacheKey string, query *datastore.Query) ([]*Package, error) {
 	var pkgs []*Package
 	item, err := cacheGet(c, cacheKey, &pkgs)
@@ -49,7 +80,12 @@ func queryPackages(c appengine.Context, cacheKey string, query *datastore.Query)
 			return nil, err
 		}
 		for i := range keys {
-			pkgs[i].ImportPath = keys[i].StringID()
+			importPath := keys[i].StringID()
+			if importPath[0] == '/' {
+				// Standard packages start with "/"
+				importPath = importPath[1:]
+			}
+			pkgs[i].ImportPath = importPath
 		}
 		item.Expiration = time.Hour
 		item.Object = pkgs
@@ -59,7 +95,6 @@ func queryPackages(c appengine.Context, cacheKey string, query *datastore.Query)
 	} else if err != nil {
 		return nil, err
 	}
-
 	return pkgs, nil
 }
 
@@ -86,35 +121,44 @@ func (pkg *Package) equal(other *Package) bool {
 
 // updatePackage updates the package in the datastore and clears memcache as
 // needed.
-func updatePackage(c appengine.Context, pi doc.PathInfo, pdoc *doc.Package) error {
-
-	importPath := pi.ImportPath()
+func updatePackage(c appengine.Context, importPath string, pdoc *doc.Package) error {
 
 	var pkg *Package
 	if pdoc != nil && pdoc.Name != "" {
+
+		indexTokens := make([]string, 0, 3)
+		if pdoc.ProjectPrefix != "" {
+			indexTokens = append(indexTokens, strings.ToLower(pdoc.ProjectPrefix))
+		}
 
 		hide := false
 		switch {
 		case doc.IsHiddenPath(importPath):
 			hide = true
 		case strings.HasPrefix(importPath, "code.google.com/p/go/"):
-			// Don't show standard library in package list.
 			hide = true
+		case pdoc.ProjectPrefix == "":
+			// standard packages
+			hide = true
+			indexTokens = append(indexTokens, strings.ToLower(pdoc.Name))
 		case pdoc.IsCmd:
 			// Hide if command does not have a synopsis or doc with more than one sentence.
 			i := strings.Index(pdoc.Doc, ".")
 			hide = pdoc.Synopsis == "" || i < 0 || i == len(pdoc.Doc)-1
+			if !hide {
+				_, name := path.Split(strings.ToLower(pdoc.ImportPath))
+				indexTokens = append(indexTokens, name)
+			}
 		default:
 			// Hide if no exports.
 			hide = len(pdoc.Consts) == 0 && len(pdoc.Funcs) == 0 && len(pdoc.Types) == 0 && len(pdoc.Vars) == 0
-		}
-
-		indexTokens := make([]string, 1, 3)
-		indexTokens[0] = strings.ToLower(pi.ProjectPrefix())
-		if !hide {
-			indexTokens = append(indexTokens, strings.ToLower(pdoc.Name))
-			if _, name := path.Split(strings.ToLower(pdoc.ImportPath)); name != indexTokens[1] {
+			if !hide {
+				_, name := path.Split(strings.ToLower(pdoc.ImportPath))
 				indexTokens = append(indexTokens, name)
+				name = strings.ToLower(pdoc.Name)
+				if name != indexTokens[len(indexTokens)-1] {
+					indexTokens = append(indexTokens, name)
+				}
 			}
 		}
 
@@ -127,12 +171,40 @@ func updatePackage(c appengine.Context, pi doc.PathInfo, pdoc *doc.Package) erro
 		}
 	}
 
-	// Update the datastore. To minimize datastore costs, the datastore is 
-	// conditionally updated by comparing the package to the stored package.
+	// Update doc blob.
+
+	key := datastore.NewKey(c, "Doc", importPath, 0, nil)
+	if pkg == nil {
+		if err := datastore.Delete(c, key); err != datastore.ErrNoSuchEntity && err != nil {
+			c.Errorf("Delete(%s) -> %v", importPath, err)
+		}
+	} else if pdoc.Etag != "" {
+		var buf bytes.Buffer
+		err := gob.NewEncoder(&buf).Encode(pdoc)
+		if err != nil {
+			return err
+		}
+		doc := Doc{
+			Version: doc.PackageVersion,
+			Gob:     buf.Bytes(),
+		}
+		if _, err := datastore.Put(c, key, &doc); err != nil {
+			c.Errorf("Put(%s) -> %v", importPath, err)
+		}
+	}
+
+	// Update the package index. To minimize datastore costs and cache
+	// invalidations, the datastore is conditionally updated by comparing the
+	// package to the stored package.
+
+	keyName := importPath
+	if pdoc != nil && pdoc.ProjectPrefix == "" {
+		// Adjust standard package key name.
+		keyName = "/" + keyName
+	}
 
 	var invalidateCache bool
-
-	key := datastore.NewKey(c, "Package", importPath, 0, nil)
+	key = datastore.NewKey(c, "Package", keyName, 0, nil)
 	var storedPackage Package
 	err := datastore.Get(c, key, &storedPackage)
 	switch err {
@@ -165,7 +237,11 @@ func updatePackage(c appengine.Context, pi doc.PathInfo, pdoc *doc.Package) erro
 	// Update memcache.
 
 	if invalidateCache {
-		if err = cacheClear(c, packageListKey, projectListKeyPrefix+pi.ProjectPrefix()); err != nil {
+		keys := []string{packageListKey}
+		if pdoc != nil {
+			keys = append(keys, projectListKeyPrefix+pdoc.ProjectPrefix)
+		}
+		if err = cacheClear(c, keys...); err != nil {
 			return err
 		}
 	}

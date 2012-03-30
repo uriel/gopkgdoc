@@ -1,6 +1,8 @@
 package doc
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -11,12 +13,8 @@ import (
 // isDocFile returns true if a file with the path p should be included in the
 // documentation.
 func isDocFile(p string) bool {
-	_, f := path.Split(p)
-	return strings.HasSuffix(f, ".go") &&
-		len(f) > 0 &&
-		f[0] != '_' &&
-		f[0] != '.' &&
-		f != "deprecated.go"
+	_, n := path.Split(p)
+	return strings.HasSuffix(n, ".go") && len(n) > 0 && n[0] != '_' && n[0] != '.'
 }
 
 type GetError struct {
@@ -28,9 +26,8 @@ func (e GetError) Error() string {
 	return e.err.Error()
 }
 
-// getFiles replaces the URL string in the source content field with the
-// resource at that URL.
-func getFiles(client *http.Client, files []source, header http.Header) error {
+// fetchFiles fetches the source files specified by the rawURL field in parallel..
+func fetchFiles(client *http.Client, files []*source, header http.Header) error {
 	type result struct {
 		i   int
 		b   []byte
@@ -39,23 +36,31 @@ func getFiles(client *http.Client, files []source, header http.Header) error {
 	ch := make(chan result, len(files))
 	for i := range files {
 		go func(i int, url string) {
-			b, err := httpGet(client, url, header, false)
+			b, err := httpGet(client, url, header, notFoundErr)
 			ch <- result{i, b, err}
-		}(i, files[i].Content.(string))
+		}(i, files[i].rawURL)
 	}
 	for _ = range files {
 		r := <-ch
 		if r.err != nil {
 			return r.err
 		}
-		files[r.i].Content = r.b
+		files[r.i].data = r.b
 	}
 	return nil
 }
 
-// httpGet gets the resource at url using the given headers. If notFound is
-// true, then ErrPackageNotFound is for resource not found errors (404).
-func httpGet(client *http.Client, url string, header http.Header, notFound bool) ([]byte, error) {
+const (
+	// Don't treat 404 response as an error.
+	notFoundOK = iota
+	// Treat 404 response as an error and return ErrPackageNotFound
+	notFoundNotFound
+	// Treat 404 response as an error and return generic HTTP error.
+	notFoundErr
+)
+
+// httpGet gets the resource at url using the given headers. 
+func httpGet(client *http.Client, url string, header http.Header, notFound int) ([]byte, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -68,15 +73,32 @@ func httpGet(client *http.Client, url string, header http.Header, notFound bool)
 		return nil, GetError{req.URL.Host, err}
 	}
 	defer resp.Body.Close()
+
 	switch {
-	case resp.StatusCode == 404 && notFound:
-		return nil, ErrPackageNotFound
+	case resp.StatusCode == 404:
+		switch notFound {
+		case notFoundOK:
+			// ok
+		case notFoundErr:
+			return nil, GetError{req.URL.Host, fmt.Errorf("get %s -> %d", url, resp.StatusCode)}
+		case notFoundNotFound:
+			return nil, ErrPackageNotFound
+		default:
+			panic("unexpected")
+		}
 	case resp.StatusCode != 200:
 		return nil, GetError{req.URL.Host, fmt.Errorf("get %s -> %d", url, resp.StatusCode)}
 	}
+
 	b, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, GetError{req.URL.Host, err}
 	}
 	return b, nil
+}
+
+func hashBytes(p []byte) string {
+	h := md5.New()
+	h.Write(p)
+	return hex.EncodeToString(h.Sum(nil))
 }

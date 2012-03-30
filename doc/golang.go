@@ -1,4 +1,4 @@
-// Copyright 2011 Gary Burd
+// Copyright 2012 Gary Burd
 //
 // Licensed under the Apache License, Version 2.0 (the "License"): you may
 // not use this file except in compliance with the License. You may obtain
@@ -12,24 +12,19 @@
 // License for the specific language governing permissions and limitations
 // under the License.
 
-// +build appengine
+package doc
 
-package app
+var StandardPackages = map[string]bool{
+	// Fake entries to allow directory listing for these import paths.
+	"archive":   true,
+	"compress":  true,
+	"container": true,
+	"debug":     true,
+	"encoding":  true,
+	"go":        true,
+	"text":      true,
 
-const standardPackagePath = "http://golang.org/pkg/"
-
-// go list -f '"{{.ImportPath}}": true,'  
-var standardPackages = map[string]bool{
-	"cmd/cgo":             true,
-	"cmd/go":              true,
-	"cmd/goapi":           true,
-	"cmd/godoc":           true,
-	"cmd/gofix":           true,
-	"cmd/gofmt":           true,
-	"cmd/goinstall":       true,
-	"cmd/gotest":          true,
-	"cmd/govet":           true,
-	"cmd/goyacc":          true,
+	// go list -f '"{{.ImportPath}}": true,'  std | grep -v exp/
 	"archive/tar":         true,
 	"archive/zip":         true,
 	"bufio":               true,
@@ -80,15 +75,6 @@ var standardPackages = map[string]bool{
 	"encoding/pem":        true,
 	"encoding/xml":        true,
 	"errors":              true,
-	"exp/ebnf":            true,
-	"exp/ebnflint":        true,
-	"exp/gotype":          true,
-	"exp/html":            true,
-	"exp/norm":            true,
-	"exp/proxy":           true,
-	"exp/terminal":        true,
-	"exp/types":           true,
-	"exp/utf8string":      true,
 	"expvar":              true,
 	"flag":                true,
 	"fmt":                 true,
@@ -107,13 +93,11 @@ var standardPackages = map[string]bool{
 	"html":                true,
 	"html/template":       true,
 	"image":               true,
-	"image/bmp":           true,
 	"image/color":         true,
 	"image/draw":          true,
 	"image/gif":           true,
 	"image/jpeg":          true,
 	"image/png":           true,
-	"image/tiff":          true,
 	"index/suffixarray":   true,
 	"io":                  true,
 	"io/ioutil":           true,
@@ -138,9 +122,6 @@ var standardPackages = map[string]bool{
 	"net/smtp":            true,
 	"net/textproto":       true,
 	"net/url":             true,
-	"old/netchan":         true,
-	"old/regexp":          true,
-	"old/template":        true,
 	"os":                  true,
 	"os/exec":             true,
 	"os/signal":           true,
@@ -163,7 +144,6 @@ var standardPackages = map[string]bool{
 	"testing":             true,
 	"testing/iotest":      true,
 	"testing/quick":       true,
-	"testing/script":      true,
 	"text/scanner":        true,
 	"text/tabwriter":      true,
 	"text/template":       true,

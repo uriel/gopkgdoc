@@ -18,10 +18,14 @@ import (
 	"bytes"
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/doc"
 	"go/parser"
 	"go/printer"
 	"go/token"
+	"io"
+	"io/ioutil"
+	"os"
 	"path"
 	"regexp"
 	"sort"
@@ -120,54 +124,64 @@ type builder struct {
 	examples    []*doc.Example
 	buf         bytes.Buffer // scratch space for printNode method.
 	importPaths map[string]map[string]string
-	pkg         *ast.Package
-	urls        map[string]string
+	ast         *ast.Package
+	srcs        map[string]*source
+	pkg         *Package
 }
 
 // fileImportPaths returns a package name to import path map for the file with
 // filename.
 func (b *builder) fileImportPaths(filename string) map[string]string {
-	// TODO: find name using Package entities in App Engine datastore.
 	importPaths := b.importPaths[filename]
-	if importPaths == nil {
-		importPaths = make(map[string]string)
-		scores := make(map[string]int)
-		b.importPaths[filename] = importPaths
-		for _, i := range b.pkg.Files[filename].Imports {
-			importPath, _ := strconv.Unquote(i.Path.Value)
-			if i.Name != nil {
-				importPaths[i.Name.Name] = importPath
-				scores[i.Name.Name] = 4
-			} else {
-				// Use heuristics to find one or package names from the last
-				// segment of the import path.
-				_, name := path.Split(importPath)
+	if importPaths != nil {
+		return importPaths
+	}
 
-				if scores[name] <= 1 {
-					if strings.HasPrefix(name, "go") {
-						n := name[len("go"):]
-						importPaths[n] = importPath
-						scores[n] = 1
-					}
-				}
+	importPaths = make(map[string]string)
+	scores := make(map[string]int)
+	b.importPaths[filename] = importPaths
 
-				if scores[name] <= 2 {
-                    switch {
-                    case strings.HasPrefix(name, "go-") || strings.HasPrefix(name, "go."):
-						n := name[len("go-"):]
-						importPaths[n] = importPath
-						scores[n] = 2
-                    case strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "-go"):
-						n := name[:len(name)-len(".go")]
-						importPaths[n] = importPath
-						scores[n] = 2
-					}
-				}
+	file := b.ast.Files[filename]
+	if file == nil {
+		// THe code can reference files outside the known set of files
+		// when line comments are used (//line <file>:<line>).
+		return importPaths
+	}
 
-				if scores[name] <= 3 {
-					importPaths[name] = importPath
-					scores[name] = 3
+	for _, i := range file.Imports {
+		importPath, _ := strconv.Unquote(i.Path.Value)
+		if i.Name != nil {
+			importPaths[i.Name.Name] = importPath
+			scores[i.Name.Name] = 4
+		} else {
+			// Use heuristics to find package name from the last segment of
+			// the import path.
+			_, name := path.Split(importPath)
+
+			if scores[name] <= 1 {
+				if strings.HasPrefix(name, "go") {
+					n := name[len("go"):]
+					importPaths[n] = importPath
+					scores[n] = 1
 				}
+			}
+
+			if scores[name] <= 2 {
+				switch {
+				case strings.HasPrefix(name, "go-") || strings.HasPrefix(name, "go."):
+					n := name[len("go-"):]
+					importPaths[n] = importPath
+					scores[n] = 2
+				case strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "-go"):
+					n := name[:len(name)-len(".go")]
+					importPaths[n] = importPath
+					scores[n] = 2
+				}
+			}
+
+			if scores[name] <= 3 {
+				importPaths[name] = importPath
+				scores[name] = 3
 			}
 		}
 	}
@@ -306,7 +320,13 @@ func (b *builder) printNode(node interface{}) string {
 
 func (b *builder) printPos(pos token.Pos) string {
 	position := b.fset.Position(pos)
-	return b.urls[position.Filename] + fmt.Sprintf(b.lineFmt, position.Line)
+	src := b.srcs[position.Filename]
+	if src == nil {
+		// The position can be outside the known set of files when line
+		// comments are used (//line <file>:<line>). 
+		return ""
+	}
+	return src.browseURL + fmt.Sprintf(b.lineFmt, position.Line)
 }
 
 type Value struct {
@@ -442,55 +462,83 @@ type File struct {
 	URL  string
 }
 
-func (b *builder) files(filenames []string) []*File {
+func (b *builder) files(names []string) []*File {
 	var result []*File
-	for _, f := range filenames {
-		_, name := path.Split(f)
+	for _, name := range names {
 		result = append(result, &File{
 			Name: name,
-			URL:  b.urls[f],
+			URL:  b.srcs[name].browseURL,
 		})
 	}
 	return result
 }
 
-func (b *builder) children(m map[string]bool) []string {
-	if m == nil || len(m) == 0 {
-		return nil
-	}
-	r := make([]string, 0, len(m))
-	for p := range m {
-		if IsHiddenPath(p) {
-			continue
-		}
-		r = append(r, p)
-	}
-	sort.Strings(r)
-	return r
+type source struct {
+	name      string
+	browseURL string
+	rawURL    string
+	data      []byte
 }
+
+func (s *source) Name() string       { return s.name }
+func (s *source) Size() int64        { return int64(len(s.data)) }
+func (s *source) Mode() os.FileMode  { return 0 }
+func (s *source) ModTime() time.Time { return time.Time{} }
+func (s *source) IsDir() bool        { return false }
+func (s *source) Sys() interface{}   { return nil }
+
+func (b *builder) readDir(dir string) ([]os.FileInfo, error) {
+	if dir != b.pkg.ImportPath {
+		panic("unexpected")
+	}
+	infos := make([]os.FileInfo, 0, len(b.srcs))
+	for _, src := range b.srcs {
+		infos = append(infos, src)
+	}
+	return infos, nil
+}
+
+func (b *builder) openFile(path string) (io.ReadCloser, error) {
+	if strings.HasPrefix(path, b.pkg.ImportPath+"/") {
+		if src, ok := b.srcs[path[len(b.pkg.ImportPath)+1:]]; ok {
+			return ioutil.NopCloser(bytes.NewReader(src.data)), nil
+		}
+	}
+	panic("unexpected")
+}
+
+// PackageVersion is modified when previously stored packages are invalid.
+const PackageVersion = "1"
 
 type Package struct {
 	// The import path for this package.
 	ImportPath string
 
-	// Child package import paths. This is not filled in for all VCS services.
-	Children []string
+	// Import path prefix for all packages in the project.
+	ProjectPrefix string
 
-	// Package name or "" if no package for this import path.
+	// Name of the project.
+	ProjectName string
+
+	// Project home page.
+	ProjectURL string
+
+	// Errors found when fetching or parsing this package. 
+	Errors []string
+
+	// The time this object was created.
+	Updated time.Time
+
+	// Package name or "" if no package for this import path. The proceeding
+	// fields are set even if a package is not found for the import path.
 	Name string
 
 	// Synopsis and full documentation for package.
 	Synopsis string
 	Doc      string
 
-	// The time this object was created.
-	Updated time.Time
-
 	// Format this package as a command.
 	IsCmd bool
-
-	// Package is an application main.
-	IsMain bool
 
 	// Top-level declarations.
 	Consts []*Value
@@ -498,140 +546,108 @@ type Package struct {
 	Types  []*Type
 	Vars   []*Value
 
-	// Examples
+	// Package examples
 	Examples []Example
 
-	// Non-test files.
+	// Source files.
 	Files []*File
+
+	Etag string
 }
 
-type source struct {
-	Filename string
-	URL      string
-	Content  interface{}
-}
-
-func buildDoc(importPath string, lineFmt string, files []source, children map[string]bool) (*Package, error) {
+func buildDoc(importPath, projectPrefix, projectName, projectURL, etag string, lineFmt string, srcs []*source) (*Package, error) {
 
 	b := &builder{
 		lineFmt:     lineFmt,
 		fset:        token.NewFileSet(),
 		importPaths: make(map[string]map[string]string),
-		urls:        make(map[string]string),
+		srcs:        make(map[string]*source),
+		pkg: &Package{
+			ImportPath:    importPath,
+			ProjectName:   projectName,
+			ProjectPrefix: projectPrefix,
+			ProjectURL:    projectURL,
+			Etag:          etag,
+			Updated:       time.Now(),
+		},
 	}
 
-	pkgs := make(map[string]*ast.Package)
-	for _, f := range files {
-		b.urls[f.Filename] = f.URL
-		if strings.HasSuffix(f.Filename, "_test.go") {
-			continue
+	if len(srcs) == 0 {
+		return b.pkg, nil
+	}
+
+	for _, src := range srcs {
+		b.srcs[src.name] = src
+	}
+
+	// Find the package and associated files.
+
+	ctxt := build.Context{
+		GOOS:          "linux",
+		GOARCH:        "amd64",
+		CgoEnabled:    true,
+		JoinPath:      path.Join,
+		IsAbsPath:     path.IsAbs,
+		SplitPathList: func(list string) []string { return strings.Split(list, ":") },
+		IsDir:         func(path string) bool { panic("unexpected") },
+		HasSubdir:     func(root, dir string) (rel string, ok bool) { panic("unexpected") },
+		ReadDir:       func(dir string) (fi []os.FileInfo, err error) { return b.readDir(dir) },
+		OpenFile:      func(path string) (r io.ReadCloser, err error) { return b.openFile(path) },
+		Compiler:      "gc",
+	}
+	pkg, err := ctxt.ImportDir(b.pkg.ImportPath, 0)
+	if err != nil {
+		b.pkg.Errors = append(b.pkg.Errors, err.Error())
+		return b.pkg, nil
+	}
+
+	// Parse the Go files
+
+	b.ast = &ast.Package{Name: pkg.Name, Files: make(map[string]*ast.File)}
+	if pkg.IsCommand() && b.srcs["doc.go"] != nil {
+		file, err := parser.ParseFile(b.fset, "doc.go", b.srcs["doc.go"].data, parser.ParseComments)
+		if err == nil && file.Name.Name == "documentation" {
+			b.ast.Files["doc.go"] = file
 		}
-		if src, err := parser.ParseFile(b.fset, f.Filename, f.Content, parser.ParseComments); err == nil {
-			name := src.Name.Name
-			pkg, found := pkgs[name]
-			if !found {
-				pkg = &ast.Package{Name: name, Files: make(map[string]*ast.File)}
-				pkgs[name] = pkg
+	}
+	if len(b.ast.Files) == 0 {
+		for _, name := range append(pkg.GoFiles, pkg.CgoFiles...) {
+			file, err := parser.ParseFile(b.fset, name, b.srcs[name].data, parser.ParseComments)
+			if err != nil {
+				b.pkg.Errors = append(b.pkg.Errors, err.Error())
+				continue
 			}
-			pkg.Files[f.Filename] = src
-		}
-	}
-	score := 0
-	for _, pkg := range pkgs {
-		switch {
-		case score < 3 && strings.HasSuffix(importPath, pkg.Name):
-			b.pkg = pkg
-			score = 3
-		case score < 2 && pkg.Name != "main":
-			b.pkg = pkg
-			score = 2
-		case score < 1:
-			b.pkg = pkg
-			score = 1
+			b.ast.Files[name] = file
 		}
 	}
 
-	if b.pkg == nil {
-		if len(children) > 0 {
-			return &Package{Children: b.children(children), ImportPath: importPath, Updated: time.Now()}, nil
-		}
-		return nil, ErrPackageNotFound
-	}
+	// Find examples in the test files.
 
-	// Determine if the directory contains an application main function. This
-	// check must be done before the AST is filtered by the call to
-	// ast.PackageExports below.
-	hasApplicationMain := false
-	if pkg, ok := pkgs["main"]; ok {
-	MainCheck:
-		for _, src := range pkg.Files {
-			for _, d := range src.Decls {
-				if f, ok := d.(*ast.FuncDecl); ok && f.Name.Name == "main" {
-					hasApplicationMain = (f.Type.Params == nil || len(f.Type.Params.List) == 0) &&
-						(f.Type.Results == nil || len(f.Type.Results.List) == 0)
-					break MainCheck
-				}
-			}
-		}
-	}
-
-	ast.PackageExports(b.pkg)
-	pdoc := doc.New(b.pkg, importPath, 0)
-
-	pdoc.Doc = strings.TrimRight(pdoc.Doc, " \t\n\r")
-
-	// If the package is the special documentation package used for commands,
-	// then set the pakcage name to "main".
-	if pdoc.Name == "documentation" &&
-		len(pdoc.Filenames) == 1 &&
-		path.Base(pdoc.Filenames[0]) == "doc.go" &&
-		len(pdoc.Consts) == 0 &&
-		len(pdoc.Funcs) == 0 &&
-		len(pdoc.Types) == 0 &&
-		len(pdoc.Vars) == 0 &&
-		hasApplicationMain {
-		pdoc.Name = "main"
-	}
-
-	isCmd := pdoc.Name == "main" && hasApplicationMain
-
-	// Strip declarations and files from commands.
-	if isCmd {
-		pdoc.Consts = nil
-		pdoc.Funcs = nil
-		pdoc.Types = nil
-		pdoc.Vars = nil
-		pdoc.Filenames = nil
-	}
-
-	// Collect examples.
-	for _, f := range files {
-		if !strings.HasSuffix(f.Filename, "_test.go") {
-			continue
-		}
-		src, err := parser.ParseFile(b.fset, f.Filename, f.Content, parser.ParseComments)
+	for _, name := range append(pkg.TestGoFiles, pkg.XTestGoFiles...) {
+		file, err := parser.ParseFile(b.fset, name, b.srcs[name].data, parser.ParseComments)
 		if err != nil {
-			continue
+			b.pkg.Errors = append(b.pkg.Errors, err.Error())
 		}
-		if src.Name.Name != pdoc.Name && src.Name.Name != pdoc.Name+"_test" {
-			continue
-		}
-		b.examples = append(b.examples, doc.Examples(src)...)
+		b.examples = append(b.examples, doc.Examples(file)...)
 	}
 
-	return &Package{
-		Children:   b.children(children),
-		Consts:     b.values(pdoc.Consts),
-		Doc:        pdoc.Doc,
-		Examples:   b.getExamples(""),
-		Files:      b.files(pdoc.Filenames),
-		Funcs:      b.funcs(pdoc.Funcs),
-		ImportPath: pdoc.ImportPath,
-		IsCmd:      isCmd,
-		Name:       pdoc.Name,
-		Synopsis:   synopsis(pdoc.Doc),
-		Types:      b.types(pdoc.Types),
-		Updated:    time.Now(),
-		Vars:       b.values(pdoc.Vars),
-	}, nil
+	b.vetPackage()
+
+	ast.PackageExports(b.ast)
+	pdoc := doc.New(b.ast, b.pkg.ImportPath, 0)
+
+	b.pkg.Name = pdoc.Name
+	b.pkg.Doc = strings.TrimRight(pdoc.Doc, " \t\n\r")
+	b.pkg.Synopsis = synopsis(b.pkg.Doc)
+
+	b.pkg.Examples = b.getExamples("")
+	b.pkg.Files = b.files(pdoc.Filenames)
+	b.pkg.IsCmd = pkg.IsCommand()
+
+	b.pkg.Consts = b.values(pdoc.Consts)
+	b.pkg.Funcs = b.funcs(pdoc.Funcs)
+	b.pkg.Types = b.types(pdoc.Types)
+	b.pkg.Vars = b.values(pdoc.Vars)
+
+	return b.pkg, nil
 }

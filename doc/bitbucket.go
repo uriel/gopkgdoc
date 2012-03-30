@@ -17,24 +17,18 @@ package doc
 import (
 	"encoding/json"
 	"net/http"
+	"path"
 	"regexp"
 )
 
 var bitbucketPattern = regexp.MustCompile(`^bitbucket\.org/([a-z0-9A-Z_.\-]+)/([a-z0-9A-Z_.\-]+)(/[a-z0-9A-Z_.\-/]*)?$`)
 
-type bitbucketPathInfo []string
-
-func newBitbucketPathInfo(m []string) PathInfo    { return bitbucketPathInfo(m) }
-func (m bitbucketPathInfo) ImportPath() string    { return m[0] }
-func (m bitbucketPathInfo) ProjectPrefix() string { return "bitbucket.org/" + m[1] + "/" + m[2] }
-func (m bitbucketPathInfo) ProjectName() string   { return m[2] }
-func (m bitbucketPathInfo) ProjectURL() string {
-	return "https://bitbucket.org/" + m[1] + "/" + m[2] + "/"
-}
-
-func (m bitbucketPathInfo) Package(client *http.Client) (*Package, error) {
+func getBitbucketDoc(client *http.Client, m []string, savedEtag string) (*Package, error) {
 
 	importPath := m[0]
+	projectPrefix := "bitbucket.org/" + m[1] + "/" + m[2]
+	projectName := m[2]
+	projectURL := "https://bitbucket.org/" + m[1] + "/" + m[2] + "/"
 	userRepo := m[1] + "/" + m[2]
 
 	// Normalize dir to "" or string with trailing '/'.
@@ -50,7 +44,7 @@ func (m bitbucketPathInfo) Package(client *http.Client) (*Package, error) {
 	var p []byte
 	for _, t := range []string{"tip", "master"} {
 		var err error
-		p, err = httpGet(client, "https://api.bitbucket.org/1.0/repositories/"+userRepo+"/src/"+t+"/"+dir, nil, true)
+		p, err = httpGet(client, "https://api.bitbucket.org/1.0/repositories/"+userRepo+"/src/"+t+"/"+dir, nil, notFoundNotFound)
 		if err == nil {
 			tag = t
 			break
@@ -60,6 +54,11 @@ func (m bitbucketPathInfo) Package(client *http.Client) (*Package, error) {
 	}
 	if tag == "" {
 		return nil, ErrPackageNotFound
+	}
+
+	etag := hashBytes(p)
+	if etag == savedEtag {
+		return nil, ErrPackageNotModified
 	}
 
 	var directory struct {
@@ -72,22 +71,22 @@ func (m bitbucketPathInfo) Package(client *http.Client) (*Package, error) {
 		return nil, err
 	}
 
-	var files []source
+	var files []*source
 	for _, f := range directory.Files {
 		if isDocFile(f.Path) {
-			files = append(files, source{
-				f.Path,
-				"https://bitbucket.org/" + userRepo + "/src/" + tag + "/" + f.Path,
-				"https://api.bitbucket.org/1.0/repositories/" + userRepo + "/raw/" + tag + "/" + f.Path,
+			_, name := path.Split(f.Path)
+			files = append(files, &source{
+				name:      name,
+				browseURL: "https://bitbucket.org/" + userRepo + "/src/" + tag + "/" + f.Path,
+				rawURL:    "https://api.bitbucket.org/1.0/repositories/" + userRepo + "/raw/" + tag + "/" + f.Path,
 			})
 		}
 	}
 
-	err = getFiles(client, files, nil)
+	err = fetchFiles(client, files, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO: find child directories.
-	return buildDoc(importPath, "#cl-%d", files, nil)
+	return buildDoc(importPath, projectPrefix, projectName, projectURL, etag, "#cl-%d", files)
 }

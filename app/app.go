@@ -29,14 +29,13 @@ import (
 	"net/url"
 	"path"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 )
 
 const (
-	docKeyPrefix = "doc3:"
+	docKeyPrefix = "doc-" + doc.PackageVersion + ":"
 )
 
 func filterCmds(in []*Package) (out []*Package, cmds []*Package) {
@@ -51,27 +50,14 @@ func filterCmds(in []*Package) (out []*Package, cmds []*Package) {
 	return
 }
 
-// getDoc gets the package documentation and child packages for the given import path.
-func getDoc(c appengine.Context, importPath string) (*doc.Package, []*Package, error) {
-
-	pi := doc.NewPathInfo(importPath)
-	if pi == nil {
-		return nil, nil, doc.ErrPackageNotFound
-	}
-
-	// Fetch child packages for project.
-
-	projectPrefix := pi.ProjectPrefix()
+func childPackages(c appengine.Context, projectPrefix, importPath string) ([]*Package, error) {
 	projectPkgs, err := queryPackages(c, projectListKeyPrefix+projectPrefix,
 		datastore.NewQuery("Package").
 			Filter("__key__ >", datastore.NewKey(c, "Package", projectPrefix+"/", 0, nil)).
 			Filter("__key__ <", datastore.NewKey(c, "Package", projectPrefix+"0", 0, nil)))
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-
-	// Restrict list of packages to children of this package. Remove hidden
-	// packages.
 
 	prefix := importPath + "/"
 	pkgs := projectPkgs[0:0]
@@ -80,76 +66,77 @@ func getDoc(c appengine.Context, importPath string) (*doc.Package, []*Package, e
 			pkgs = append(pkgs, pkg)
 		}
 	}
+	return pkgs, nil
+}
 
-	// Fetch documentation for this package.
+// getDoc gets the package documentation and child packages for the given import path.
+func getDoc(c appengine.Context, importPath string) (*doc.Package, []*Package, error) {
+
+	// Look for doc in memory cache.
 
 	cacheKey := docKeyPrefix + importPath
 	var pdoc *doc.Package
 	item, err := cacheGet(c, cacheKey, &pdoc)
 	switch err {
-	case memcache.ErrCacheMiss:
-		c.Infof("Fetching %s from source.", importPath)
-		pdoc, err = pi.Package(urlfetch.Client(c))
-		switch err {
-		case doc.ErrPackageNotFound:
-			if len(pkgs) > 0 {
-				// Create a tombstone.
-				pdoc = &doc.Package{}
-			}
-		case nil:
-			// ok
-		default:
-			return nil, nil, err
-		}
-		if pdoc != nil {
-			// Cache the document that we loaded or the tombstone.
-			item.Object = pdoc
-			item.Expiration = time.Hour
-			if err := cacheSet(c, item); err != nil {
-				return nil, nil, err
-			}
-		}
-		// Update the Packages table in the datastore.
-		if err := updatePackage(c, pi, pdoc); err != nil {
-			return nil, nil, err
-		}
 	case nil:
+		pkgs, err := childPackages(c, pdoc.ProjectPrefix, importPath)
+		if err != nil {
+			return nil, nil, err
+		}
+		return pdoc, pkgs, err
+	case memcache.ErrCacheMiss:
 		// OK
 	default:
 		return nil, nil, err
 	}
 
-	if pdoc != nil {
+	// Look for doc in datastore.
 
-		// Merge document children with package list loaded from datastore.
+	pdocSaved, etag, err := loadDoc(c, importPath)
+	if err != nil {
+		return nil, nil, err
+	}
 
-		m := make(map[string]*Package, len(pkgs)+len(pdoc.Children))
-		for _, pkg := range pkgs {
-			m[pkg.ImportPath] = pkg
-		}
-		for _, child := range pdoc.Children {
-			if _, found := m[child]; !found {
-				m[child] = &Package{ImportPath: child}
-			}
-		}
-		keys := make([]string, 0, len(m))
-		for key := range m {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		pkgs = pkgs[0:0]
-		for _, key := range keys {
-			pkgs = append(pkgs, m[key])
-		}
+	// Get documentation from the version control service.
 
-		// Ignore tombstones and docs with children only.
+	pdoc, err = doc.Get(urlfetch.Client(c), importPath, etag)
+	c.Infof("Fetched %s from source, err=%v.", importPath, err)
 
-		if pdoc.Name == "" {
-			pdoc = nil
+	if err == nil || err == doc.ErrPackageNotFound {
+		if err := updatePackage(c, importPath, pdoc); err != nil {
+			return nil, nil, err
 		}
 	}
 
-	if pdoc == nil && len(pkgs) == 0 {
+	if err == doc.ErrPackageNotModified {
+		pdoc = pdocSaved
+		err = nil
+	}
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Find the child packages.
+
+	pkgs, err := childPackages(c, pdoc.ProjectPrefix, importPath)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Cache the documentation. To prevent the cache from growing without
+	// bound, we only cache the doc if it contains a valid package or if
+	// it's a parent of a package in the index.
+	if pdoc.Name != "" || len(pkgs) > 0 {
+		item.Object = pdoc
+		item.Expiration = time.Hour
+		if err := cacheSet(c, item); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	if len(pkgs) == 0 && pdoc.Name == "" && len(pdoc.Errors) == 0 {
+		// If we don't have anything to display, then treat it as not found.
 		return nil, nil, doc.ErrPackageNotFound
 	}
 
@@ -163,8 +150,8 @@ func (f handlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	err := f(w, r)
 	if err != nil {
 		appengine.NewContext(r).Errorf("Error %s", err.Error())
-		if err, ok := err.(doc.GetError); ok {
-			http.Error(w, "Error getting files from "+err.Host+".", http.StatusInternalServerError)
+		if e, ok := err.(doc.GetError); ok {
+			http.Error(w, "Error getting files from "+e.Host+".", http.StatusInternalServerError)
 		} else if appengine.IsCapabilityDisabled(err) || appengine.IsOverQuota(err) {
 			http.Error(w, "Internal error: "+err.Error(), http.StatusInternalServerError)
 		} else {
@@ -186,35 +173,21 @@ func servePackage(w http.ResponseWriter, r *http.Request) error {
 	}
 	importPath := p[len("/pkg/"):]
 
-	// Fix old Google Project Hosting path
-	if m := oldGooglePattern.FindStringSubmatch(importPath); m != nil {
-		http.Redirect(w, r, "/pkg/"+newGooglePath(m), 301)
-		return nil
-	}
-
 	pdoc, pkgs, err := getDoc(c, importPath)
-	switch {
-	case err == doc.ErrPackageNotFound:
+	switch err {
+	case doc.ErrPackageNotFound:
 		return executeTemplate(w, "notfound.html", 404, nil)
-	case err != nil:
+	case nil:
+		//ok
+	default:
 		return err
 	}
 
 	pkgs, cmds := filterCmds(pkgs)
-
-	if pdoc == nil {
-		return executeTemplate(w, "dir.html", 200, map[string]interface{}{
-			"pkgs": pkgs,
-			"cmds": cmds,
-			"pi":   doc.NewPathInfo(importPath),
-		})
-	}
-
 	return executeTemplate(w, "pkg.html", 200, map[string]interface{}{
 		"pkgs": pkgs,
 		"cmds": cmds,
 		"pdoc": pdoc,
-		"pi":   doc.NewPathInfo(importPath),
 	})
 }
 
@@ -228,8 +201,25 @@ func serveClearPackageCache(w http.ResponseWriter, r *http.Request) error {
 	cacheKey := docKeyPrefix + importPath
 	err := memcache.Delete(c, cacheKey)
 	c.Infof("memcache.Delete(%s) -> %v", cacheKey, err)
+	removeDoc(c, importPath)
 	http.Redirect(w, r, "/pkg/"+importPath, 302)
 	return nil
+}
+
+func serveGoIndex(w http.ResponseWriter, r *http.Request) error {
+	c := appengine.NewContext(r)
+	pkgs, err := queryPackages(c, projectListKeyPrefix,
+		datastore.NewQuery("Package").
+			Filter("__key__ >", datastore.NewKey(c, "Package", "/", 0, nil)).
+			Filter("__key__ <", datastore.NewKey(c, "Package", "0", 0, nil)))
+	if err != nil {
+		return err
+	}
+	pkgs, cmds := filterCmds(pkgs)
+	return executeTemplate(w, "std.html", 200, map[string]interface{}{
+		"pkgs": pkgs,
+		"cmds": cmds,
+	})
 }
 
 func serveIndex(w http.ResponseWriter, r *http.Request) error {
@@ -267,26 +257,26 @@ func serveAPIIndex(w http.ResponseWriter, r *http.Request) error {
 	return err
 }
 
-func serveAPIUpdate(w http.ResponseWriter, r *http.Request) error {
+func serveAPIUpdate(w http.ResponseWriter, r *http.Request) {
+	c := appengine.NewContext(r)
 	if r.Method != "POST" {
 		http.Error(w, "Method not supported.", http.StatusMethodNotAllowed)
-		return nil
+		return
 	}
-	pi := doc.NewPathInfo(r.FormValue("importPath"))
-	if pi == nil {
-		http.Error(w, "Not found.", http.StatusNotFound)
-		return nil
+	importPath := r.FormValue("importPath")
+	pdoc, err := doc.Get(urlfetch.Client(c), importPath, "")
+	if err == nil || err == doc.ErrPackageNotFound {
+		err = updatePackage(c, importPath, pdoc)
 	}
-	c := appengine.NewContext(r)
-	pdoc, err := pi.Package(urlfetch.Client(c))
-	if err != nil && err != doc.ErrPackageNotFound {
-		return err
+
+	if err != nil {
+		c.Errorf("Error %s", err.Error())
+		io.WriteString(w, "INTERNAL ERROR\n")
+	} else if pdoc == nil {
+		io.WriteString(w, "NOT FOUND\n")
+	} else {
+		io.WriteString(w, "OK\n")
 	}
-	if err := updatePackage(c, pi, pdoc); err != nil {
-		return err
-	}
-	io.WriteString(w, "OK")
-	return nil
 }
 
 func importPathFromGoogleBrowse(m []string) string {
@@ -313,12 +303,6 @@ func importPathFromGoogleBrowse(m []string) string {
 		dir = dir + "/" + d
 	}
 	return "code.google.com/p/" + project + subrepo + dir
-}
-
-var oldGooglePattern = regexp.MustCompile(`^([a-z0-9\-]+)\.googlecode\.com/(svn|git|hg)(/[a-z0-9A-Z_.\-/]+)?$`)
-
-func newGooglePath(m []string) string {
-	return "code.google.com/p/" + m[1] + m[3]
 }
 
 var importPathCleaners = []struct {
@@ -349,10 +333,6 @@ var importPathCleaners = []struct {
 		// http or https prefix.
 		regexp.MustCompile(`^https?:/+(.*)$`),
 		func(m []string) string { return m[1] },
-	},
-	{
-		oldGooglePattern,
-		newGooglePath,
 	},
 }
 
@@ -389,21 +369,14 @@ func serveHome(w http.ResponseWriter, r *http.Request) error {
 			map[string]interface{}{"Host": r.Host})
 	}
 
-	// Logs show that people are looking for the standard packages. Help them
-	// out with a redirect to golang.org.
-	if standardPackages[importPath] {
-		http.Redirect(w, r, standardPackagePath+importPath, 302)
-		return nil
-	}
-
-	_, _, err := getDoc(c, importPath)
-
-	if err == nil {
+	pdoc, _, err := getDoc(c, importPath)
+	switch err {
+	case nil:
 		http.Redirect(w, r, "/pkg/"+importPath, 302)
 		return nil
-	}
-
-	if err != doc.ErrPackageNotFound {
+	case doc.ErrPackageNotFound:
+		pdoc = nil
+	default:
 		return err
 	}
 
@@ -414,8 +387,11 @@ func serveHome(w http.ResponseWriter, r *http.Request) error {
 	if _, name := path.Split(indexTokens[0]); name != indexTokens[0] {
 		indexTokens = append(indexTokens, name)
 	}
-	if pi := doc.NewPathInfo(indexTokens[0]); pi != nil && pi.ProjectPrefix() != indexTokens[0] {
-		indexTokens = append(indexTokens, pi.ProjectPrefix())
+	if pdoc != nil {
+		projectPrefix := strings.ToLower(pdoc.ProjectPrefix)
+		if projectPrefix != indexTokens[0] {
+			indexTokens = append(indexTokens, projectPrefix)
+		}
 	}
 
 	ch := make(chan []*datastore.Key, len(indexTokens))
@@ -438,6 +414,9 @@ func serveHome(w http.ResponseWriter, r *http.Request) error {
 
 	importPaths := make([]string, 0, len(m))
 	for p := range m {
+		if p[0] == '/' {
+			p = p[1:]
+		}
 		importPaths = append(importPaths, p)
 	}
 
@@ -449,20 +428,14 @@ func serveAbout(w http.ResponseWriter, r *http.Request) error {
 	return executeTemplate(w, "about.html", 200, map[string]interface{}{"Host": r.Host})
 }
 
-func serveGithbHook(w http.ResponseWriter, r *http.Request) {}
-
 func init() {
-
 	http.Handle("/", handlerFunc(serveHome))
 	http.Handle("/about", handlerFunc(serveAbout))
 	http.Handle("/index", handlerFunc(serveIndex))
+	http.Handle("/pkg/std", handlerFunc(serveGoIndex))
 	http.Handle("/packages", handlerFunc(servePackages))
 	http.Handle("/pkg/", handlerFunc(servePackage))
 	http.Handle("/a/refresh", handlerFunc(serveClearPackageCache))
 	http.Handle("/api/index", handlerFunc(serveAPIIndex))
-	http.Handle("/api/update", handlerFunc(serveAPIUpdate))
-
-	// To avoid errors, register handler for the previously documented Github
-	// post-receive hook. Consider clearing cache from the hook.
-	http.HandleFunc("/hook/github", serveGithbHook)
+	http.Handle("/api/update", http.HandlerFunc(serveAPIUpdate))
 }

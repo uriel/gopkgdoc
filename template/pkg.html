@@ -1,9 +1,9 @@
-{{define "pkg.html"}}
+{{define "pkg.html"}}{{with .pdoc}}
 <!DOCTYPE html>
 <html lang="en">
 <head>
   {{template "CommonHead"}}
-  <title>{{with .pdoc}}{{if .IsCmd}}{{$.pi|pathLast}}{{else}}{{.Name|html}}{{end}}{{end}} - GoPkgDoc</title>
+  <title>{{if .IsCmd}}{{.|commandName}}{{else}}{{.Name|html}}{{end}} - GoPkgDoc</title>
   <script language="javascript"> 
     function show(id) {
       var a = document.getElementById("example_" + id);
@@ -31,18 +31,17 @@
 
 <div class="page-header">
   <div class="container">
-    <h1><a href="{{.pi.ProjectURL|html}}">{{.pi.ProjectName|html}}</a> <small>{{.pi|pathInfo}}</small></h1>
+    <h1><a href="{{.ProjectURL|html}}">{{.ProjectName|html}}</a> <small>{{.|breadcrumbs}}</small></h1>
   </div>
 </div>
 
 <div class="container spacey">
-{{with .pdoc}}
-{{if .IsCmd}}
-  <h2>Command {{$.pi|pathLast}}</h2>
-  {{.Doc|comment}}
-{{else}}
+<h2>{{if .IsCmd}}Command {{.|commandName}}{{else}}{{if .Name}}package {{.Name|html}}{{end}}{{end}}</h2>
+{{if .Errors}}<div class="alert alert-error alert-block">{{range .Errors}}<p><strong>Error:</strong> {{.|html}}{{end}}</div>{{end}}
 
-<h2>package {{.Name|html}}</h2>
+{{if .IsCmd}}
+{{.Doc|comment}}
+{{else}}{{if .Name}}
 
 <p><code>import "{{.ImportPath|html}}"</code></p>
 
@@ -69,70 +68,53 @@
       {{range .Methods}}<li><a href="#{{$t.Name|html}}.{{.Name|html}}" title="{{.Decl.Text|html}}">func ({{.Recv|html}}) {{.Name|html}}</a>{{template "ExampleLinks" .}}{{end}}
     {{if or .Funcs .Methods}}</ul>{{end}}
 {{end}}
-{{if $.pkgs}}<li><a href="#subdirs">Subdirectories</a>{{end}}
+{{if or $.pkgs $.cmds}}<li><a href="#subdirs">Subdirectories</a>{{end}}
 </ul>
 </div>
 
-<h3 id="files">Package Files</h3>
-<p>{{range .Files}}<a href="{{.URL|html}}">{{.Name|html}}</a> {{end}}</p>
+<h3 id="files">Package Files</h3><p>{{range .Files}}<a href="{{.URL|html}}">{{.Name|html}}</a> {{end}}</p>
 
-{{if .Consts}}
-<h3 id="constants">Constants</h3>
-{{range .Consts}}<pre>{{.Decl|decl}}</pre>{{.Doc|comment}}{{end}}
-{{end}}
+{{if .Consts}}<h3 id="constants">Constants</h3>{{range .Consts}}<pre>{{.Decl|decl}}</pre>{{.Doc|comment}}{{end}}{{end}}
+{{if .Vars}}<h3 id="variables">Variables</h3>{{range .Vars}}<pre>{{.Decl|decl}}</pre>{{.Doc|comment}}{{end}}{{end}}
 
-{{if .Vars}}
-<h3 id="variables">Variables</h3>
-{{range .Vars}}<pre>{{.Decl|decl}}</pre>{{.Doc|comment}}{{end}}
-{{end}}
-
-{{range .Funcs}}
-<h3 id="{{.Name|html}}">func <a href="{{.URL|html}}">{{.Name|html}}</a></h3>
-<p><code>{{.Decl|decl}}</code></p>
-{{.Doc|comment}}
+{{range .Funcs}}<h3 id="{{.Name|html}}">func <a href="{{.URL|html}}">{{.Name|html}}</a></h3>
+<p><code>{{.Decl|decl}}</code></p>{{.Doc|comment}}
 {{template "Examples" .}}
 {{end}}
 
-{{range $t := .Types}}
-<h3 id="{{.Name|html}}">type <a href="{{.URL|html}}">{{.Name|html}}</a></h3>
-{{.Doc|comment}}
-<pre>{{.Decl|decl}}</pre>
+{{range $t := .Types}}<h3 id="{{.Name|html}}">type <a href="{{.URL|html}}">{{.Name|html}}</a></h3>
+{{.Doc|comment}}<pre>{{.Decl|decl}}</pre>
 {{range .Consts}}<pre>{{.Decl|decl}}</pre>{{.Doc|comment}}{{end}}
 {{range .Vars}}<pre>{{.Decl|decl}}</pre>{{.Doc|comment}}{{end}}
 {{template "Examples" .}}
 
-{{range .Funcs}}
-<h4 id="{{.Name|html}}">func <a href="{{.URL|html}}">{{.Name|html}}</a></h4>
-<p><code>{{.Decl|decl}}</code></p>
-{{.Doc|comment}}
+{{range .Funcs}}<h4 id="{{.Name|html}}">func <a href="{{.URL|html}}">{{.Name|html}}</a></h4>
+<p><code>{{.Decl|decl}}</code></p>{{.Doc|comment}}
 {{template "Examples" .}}
 {{end}}
 
-{{range .Methods}}
-<h4 id="{{$t.Name|html}}.{{.Name|html}}">func ({{.Recv|html}}) <a href="{{.URL|html}}">{{.Name|html}}</a></h4>
-<p><code>{{.Decl|decl}}</code></p>
-{{.Doc|comment}}
+{{range .Methods}}<h4 id="{{$t.Name|html}}.{{.Name|html}}">func ({{.Recv|html}}) <a href="{{.URL|html}}">{{.Name|html}}</a></h4>
+<p><code>{{.Decl|decl}}</code></p>{{.Doc|comment}}
 {{template "Examples" .}}
 {{end}}
 
-{{end}}
+{{end}}{{/* range .Types */}}
+{{end}}{{/* if .Name */}}
+{{end}}{{/* if .IsCmd */}}
 
-{{end}}
-{{end}}
-
-{{if or .pkgs .cmds}}<h3 id="subdirs">Subdirectories</h3>
-  {{with .pkgs}}
+{{if or $.pkgs $.cmds}}{{if .Name}}<h3 id="subdirs">Subdirectories</h3>{{end}}
+  {{with $.pkgs}}
     <h4>Packages</h4>
     <table class="table table-condensed">
     <thead><tr><th>Path</th><th>Synopsis</th></tr></thead>
-    <tbody>{{range .}}<tr><td><a href="/pkg/{{.ImportPath|html}}">{{relativePath .ImportPath $.pi.ImportPath}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
+    <tbody>{{range .}}<tr><td><a href="/pkg/{{.ImportPath|html}}">{{relativePath .ImportPath $.pdoc.ImportPath}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
     </table>
   {{end}}
-  {{with .cmds}}
+  {{with $.cmds}}
     <h4>Commands</h4>
     <table class="table table-condensed">
     <thead><tr><th>Path</th><th>Synopsis</th></tr></thead>
-    <tbody>{{range .}}<tr><td><a href="/pkg/{{.ImportPath|html}}">{{relativePath .ImportPath $.pi.ImportPath}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
+    <tbody>{{range .}}<tr><td><a href="/pkg/{{.ImportPath|html}}">{{relativePath .ImportPath $.pdoc.ImportPath}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
     </table>
   {{end}}
 {{end}}
@@ -140,9 +122,9 @@
 <div class="page-footer">
   <p class="pull-right"><a href="#">Back to top</a></p>
   <form name="refresh" method="POST" action="/a/refresh" class="form-inline">
-    <p>GoPkgDoc generated this page from the <a href="{{.pi.ProjectURL|html}}">{{.pi.ProjectName|html}} source code</a> {{.pdoc.Updated|relativeTime}}. 
+    <p>GoPkgDoc generated this page from the <a href="{{.ProjectURL|html}}">{{.ProjectName|html}} source code</a> {{.Updated|relativeTime}}. 
     <a href="javascript:document.refresh.submit();" title="Refresh this page from the source">⟲</a>
-    <input type="hidden" name="importPath" value="{{.pi.ImportPath|html}}">
+    <input type="hidden" name="importPath" value="{{.ImportPath|html}}">
   </form>
 </div>
 
@@ -150,7 +132,7 @@
 
 </body>
 </html>
-{{end}}
+{{end}}{{end}}
 
 {{define "ExampleLinks"}}{{range .Examples}} <a href="#example_{{.Name|html}}" title="Go to example" onclick="show('{{.Name|html}}')">☞ </a>{{end}}{{end}}
 

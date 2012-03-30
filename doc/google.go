@@ -17,24 +17,20 @@ package doc
 import (
 	"net/http"
 	"regexp"
+	"strings"
 )
 
 var googleRepoRe = regexp.MustCompile(`id="checkoutcmd">(hg|git|svn)`)
 var googleFilePattern = regexp.MustCompile(`<li><a href="([^"/]+)"`)
-
 var googlePattern = regexp.MustCompile(`^code\.google\.com/p/([a-z0-9\-]+)(\.[a-z0-9\-]+)?(/[a-z0-9A-Z_.\-/]+)?$`)
 
-type googlePathInfo []string
-
-func newGooglePathInfo(m []string) PathInfo    { return googlePathInfo(m) }
-func (m googlePathInfo) ImportPath() string    { return m[0] }
-func (m googlePathInfo) ProjectPrefix() string { return "code.google.com/p/" + m[1] + m[2] }
-func (m googlePathInfo) ProjectName() string   { return m[1] + m[2] }
-func (m googlePathInfo) ProjectURL() string    { return "https://code.google.com/p/" + m[1] + "/" }
-
-func (m googlePathInfo) Package(client *http.Client) (*Package, error) {
+func getGoogleDoc(client *http.Client, m []string, savedEtag string) (*Package, error) {
 
 	importPath := m[0]
+	projectPrefix := "code.google.com/p/" + m[1] + m[2]
+	projectName := m[1] + m[2]
+	projectURL := "https://code.google.com/p/" + m[1] + "/"
+
 	repo := m[1]
 	subrepo := m[2]
 	if len(subrepo) > 0 {
@@ -46,9 +42,14 @@ func (m googlePathInfo) Package(client *http.Client) (*Package, error) {
 	}
 
 	// Scrape the HTML project page to find the VCS.
-	p, err := httpGet(client, "http://code.google.com/p/"+repo+"/source/checkout", nil, true)
+	p, err := httpGet(client, "http://code.google.com/p/"+repo+"/source/checkout", nil, notFoundNotFound)
 	if err != nil {
 		return nil, err
+	}
+
+	etag := hashBytes(p)
+	if etag == savedEtag {
+		return nil, ErrPackageNotModified
 	}
 
 	var vcs string
@@ -59,12 +60,12 @@ func (m googlePathInfo) Package(client *http.Client) (*Package, error) {
 	}
 
 	// Scrape the repo browser to find individual Go files.
-	p, err = httpGet(client, "http://"+subrepo+repo+".googlecode.com/"+vcs+"/"+dir, nil, true)
+	p, err = httpGet(client, "http://"+subrepo+repo+".googlecode.com/"+vcs+"/"+dir, nil, notFoundNotFound)
 	if err != nil {
 		return nil, err
 	}
 
-	var files []source
+	var files []*source
 	query := ""
 	if subrepo != "" {
 		query = "?repo=" + subrepo[:len(subrepo)-1]
@@ -72,19 +73,51 @@ func (m googlePathInfo) Package(client *http.Client) (*Package, error) {
 	for _, m := range googleFilePattern.FindAllSubmatch(p, -1) {
 		fname := string(m[1])
 		if isDocFile(fname) {
-			files = append(files, source{
-				fname,
-				"http://code.google.com/p/" + repo + "/source/browse/" + dir + fname + query,
-				"http://" + subrepo + repo + ".googlecode.com/" + vcs + "/" + dir + fname,
+			files = append(files, &source{
+				name:      fname,
+				browseURL: "http://code.google.com/p/" + repo + "/source/browse/" + dir + fname + query,
+				rawURL:    "http://" + subrepo + repo + ".googlecode.com/" + vcs + "/" + dir + fname,
 			})
 		}
 	}
 
-	err = getFiles(client, files, nil)
+	err = fetchFiles(client, files, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO: find child directories.
-	return buildDoc(importPath, "#%d", files, nil)
+	return buildDoc(importPath, projectPrefix, projectName, projectURL, etag, "#%d", files)
+}
+
+func getStandardDoc(client *http.Client, importPath string, savedEtag string) (*Package, error) {
+
+	// Scrape the repo browser to find individual Go files.
+	p, err := httpGet(client, "http://go.googlecode.com/hg-history/release/src/pkg/"+importPath+"/", nil, notFoundNotFound)
+	if err != nil {
+		return nil, err
+	}
+
+	etag := hashBytes(p)
+	if etag == savedEtag {
+		return nil, ErrPackageNotModified
+	}
+
+	var files []*source
+	for _, m := range googleFilePattern.FindAllSubmatch(p, -1) {
+		fname := strings.Split(string(m[1]), "?")[0]
+		if isDocFile(fname) {
+			files = append(files, &source{
+				name:      fname,
+				browseURL: "http://code.google.com/p/go/source/browse/src/pkg/" + importPath + "/" + fname + "?name=release",
+				rawURL:    "http://go.googlecode.com/hg-history/release/src/pkg/" + importPath + "/" + fname,
+			})
+		}
+	}
+
+	err = fetchFiles(client, files, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return buildDoc(importPath, "", "Go", "https://code.google.com/p/go", etag, "#%d", files)
 }

@@ -19,28 +19,17 @@ import (
 	"net/http"
 	"path"
 	"regexp"
-	"strings"
 )
 
-type gitBlob struct {
-	Path string
-	Url  string
-}
-
 var githubRawHeader = http.Header{"Accept": {"application/vnd.github-blob.raw"}}
-
 var githubPattern = regexp.MustCompile(`^github\.com/([a-z0-9A-Z_.\-]+)/([a-z0-9A-Z_.\-]+)(/[a-z0-9A-Z_.\-/]*)?$`)
 
-type githubPathInfo []string
-
-func newGithubPathInfo(m []string) PathInfo    { return githubPathInfo(m) }
-func (m githubPathInfo) ImportPath() string    { return m[0] }
-func (m githubPathInfo) ProjectPrefix() string { return "github.com/" + m[1] + "/" + m[2] }
-func (m githubPathInfo) ProjectName() string   { return m[2] }
-func (m githubPathInfo) ProjectURL() string    { return "https://github.com/" + m[1] + "/" + m[2] + "/" }
-
-func (m githubPathInfo) Package(client *http.Client) (*Package, error) {
+func getGithubDoc(client *http.Client, m []string, savedEtag string) (*Package, error) {
 	importPath := m[0]
+	projectPrefix := "github.com/" + m[1] + "/" + m[2]
+	projectName := m[2]
+	projectURL := "https://github.com/" + m[1] + "/" + m[2] + "/"
+
 	userRepo := m[1] + "/" + m[2]
 
 	// Normalize to "" or string with trailing '/'.
@@ -58,42 +47,16 @@ func (m githubPathInfo) Package(client *http.Client) (*Package, error) {
 	//
 	// The second approach is used because it is faster and more reliable.
 
-	blobs, err := getGithubBlobs(client, userRepo)
+	p, err := httpGet(client, "https://api.github.com/repos/"+userRepo+"/git/trees/master?recursive=1", nil, notFoundNotFound)
 	if err != nil {
 		return nil, err
 	}
 
-	var files []source
-	children := make(map[string]bool)
-	for _, blob := range blobs {
-		d, f := path.Split(blob.Path)
-		switch {
-		case d == dir:
-			files = append(files, source{
-				f,
-				"https://github.com/" + userRepo + "/blob/master/" + dir + f,
-				blob.Url,
-			})
-		case strings.HasPrefix(d, dir) && !strings.HasSuffix(f, "_test.go"):
-			children["github.com/"+userRepo+"/"+d[:len(d)-1]] = true
-		}
+	etag := hashBytes(p)
+	if etag == savedEtag {
+		return nil, ErrPackageNotModified
 	}
 
-	err = getFiles(client, files, githubRawHeader)
-	if err != nil {
-		return nil, err
-	}
-
-	return buildDoc(importPath, "#L%d", files, children)
-}
-
-func getGithubBlobs(client *http.Client, userRepo string) ([]gitBlob, error) {
-	var blobs []gitBlob
-
-	p, err := httpGet(client, "https://api.github.com/repos/"+userRepo+"/git/trees/master?recursive=1", nil, true)
-	if err != nil {
-		return nil, err
-	}
 	var tree struct {
 		Tree []struct {
 			Url  string
@@ -105,10 +68,25 @@ func getGithubBlobs(client *http.Client, userRepo string) ([]gitBlob, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	var files []*source
 	for _, node := range tree.Tree {
 		if node.Type == "blob" && isDocFile(node.Path) {
-			blobs = append(blobs, gitBlob{Path: node.Path, Url: node.Url})
+			d, f := path.Split(node.Path)
+			if d == dir {
+				files = append(files, &source{
+					name:      f,
+					browseURL: "https://github.com/" + userRepo + "/blob/master/" + dir + f,
+					rawURL:    node.Url,
+				})
+			}
 		}
 	}
-	return blobs, nil
+
+	err = fetchFiles(client, files, githubRawHeader)
+	if err != nil {
+		return nil, err
+	}
+
+	return buildDoc(importPath, projectPrefix, projectName, projectURL, etag, "#L%d", files)
 }

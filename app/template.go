@@ -54,9 +54,20 @@ func relativePathFmt(importPath string, parentPath interface{}) string {
 	return template.HTMLEscapeString(importPath)
 }
 
+// importPathFmt formats an import with zero width space characters to allow for breeaks.
+func importPathFmt(importPath string) string {
+	importPath = template.HTMLEscapeString(importPath)
+	if len(importPath) > 45 {
+		// Allow long import paths to break following "/"
+		importPath = strings.Replace(importPath, "/", "/&#8203;", -1)
+	}
+	return importPath
+}
+
 // relativeTime formats the time t in nanoseconds as a human readable relative
 // time.
 func relativeTime(t time.Time) string {
+	const day = 24 * time.Hour
 	d := time.Now().Sub(t)
 	switch {
 	case d < time.Second:
@@ -67,8 +78,16 @@ func relativeTime(t time.Time) string {
 		return fmt.Sprintf("%d seconds ago", d/time.Second)
 	case d < 2*time.Minute:
 		return "one minute ago"
+	case d < time.Hour:
+		return fmt.Sprintf("%d minutes ago", d/time.Minute)
+	case d < 2*time.Hour:
+		return "one hour ago"
+	case d < day:
+		return fmt.Sprintf("%d hours ago", d/time.Hour)
+	case d < 2*day:
+		return "one day ago"
 	}
-	return fmt.Sprintf("%d minutes ago", d/time.Minute)
+	return fmt.Sprintf("%d days ago", d/day)
 }
 
 // commentFmt formats a source code control comment as HTML.
@@ -87,9 +106,6 @@ func declFmt(decl doc.Decl) string {
 		p := a.ImportPath
 		var link bool
 		switch {
-		case standardPackages[p]:
-			p = standardPackagePath + p
-			link = true
 		case p == "":
 			link = true
 		case doc.IsSupportedService(p):
@@ -112,19 +128,21 @@ func declFmt(decl doc.Decl) string {
 	return buf.String()
 }
 
-// pathLastFmt returns the last element of the path as html.
-func pathLastFmt(pi doc.PathInfo) string {
-	_, name := path.Split(pi.ImportPath())
+func commandNameFmt(pdoc *doc.Package) string {
+	_, name := path.Split(pdoc.ImportPath)
 	return template.HTMLEscapeString(name)
 }
 
-// pathInfoFmt formats a doc.PathInfo with breadcrumb links.
-func pathInfoFmt(pi doc.PathInfo) string {
-	importPath := []byte(pi.ImportPath())
+func breadcrumbsFmt(pdoc *doc.Package) string {
+	importPath := []byte(pdoc.ImportPath)
 	var buf bytes.Buffer
 	i := 0
-	j := len(pi.ProjectPrefix())
-	if j >= len(importPath) {
+	j := len(pdoc.ProjectPrefix)
+	switch {
+	case j == 0:
+		buf.WriteString("<a href=\"/pkg/std\" title=\"Standard Packages\">☆</a> ")
+		j = bytes.IndexByte(importPath, '/')
+	case j >= len(importPath):
 		j = -1
 	}
 	for j > 0 {
@@ -157,7 +175,7 @@ func executeTemplate(w http.ResponseWriter, name string, status int, data interf
 var templateSet *template.Template
 
 func parseTemplates() (*template.Template, error) {
-	// TODO: Is there a better way to call ParseGlob with application specified
+	// Is there a better way to call ParseGlob with application specified
 	// funcs? The dummy template thing is gross.
 	set, err := template.New("__dummy__").Parse(`{{define "__dummy__"}}{{end}}`)
 	if err != nil {
@@ -165,13 +183,14 @@ func parseTemplates() (*template.Template, error) {
 	}
 	set.Funcs(template.FuncMap{
 		"comment":      commentFmt,
-		"pathLast":     pathLastFmt,
 		"decl":         declFmt,
 		"equal":        reflect.DeepEqual,
 		"map":          mapFmt,
-		"pathInfo":     pathInfoFmt,
+		"breadcrumbs":  breadcrumbsFmt,
+		"commandName":  commandNameFmt,
 		"relativePath": relativePathFmt,
 		"relativeTime": relativeTime,
+		"importPath":   importPathFmt,
 	})
 	return set.ParseGlob("template/*.html")
 }
