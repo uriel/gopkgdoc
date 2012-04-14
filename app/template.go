@@ -137,7 +137,7 @@ func breadcrumbsFmt(pdoc *doc.Package) string {
 	importPath := []byte(pdoc.ImportPath)
 	var buf bytes.Buffer
 	i := 0
-	j := len(pdoc.ProjectPrefix)
+	j := len(pdoc.ProjectRoot)
 	switch {
 	case j == 0:
 		buf.WriteString("<a href=\"/pkg/std\" title=\"Standard Packages\">☆</a> ")

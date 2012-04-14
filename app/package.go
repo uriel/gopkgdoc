@@ -127,8 +127,8 @@ func updatePackage(c appengine.Context, importPath string, pdoc *doc.Package) er
 	if pdoc != nil && pdoc.Name != "" {
 
 		indexTokens := make([]string, 0, 3)
-		if pdoc.ProjectPrefix != "" {
-			indexTokens = append(indexTokens, strings.ToLower(pdoc.ProjectPrefix))
+		if pdoc.ProjectRoot != "" {
+			indexTokens = append(indexTokens, strings.ToLower(pdoc.ProjectRoot))
 		}
 
 		hide := false
@@ -137,7 +137,7 @@ func updatePackage(c appengine.Context, importPath string, pdoc *doc.Package) er
 			hide = true
 		case strings.HasPrefix(importPath, "code.google.com/p/go/"):
 			hide = true
-		case pdoc.ProjectPrefix == "":
+		case pdoc.ProjectRoot == "":
 			// standard packages
 			hide = true
 			indexTokens = append(indexTokens, strings.ToLower(pdoc.Name))
@@ -198,7 +198,7 @@ func updatePackage(c appengine.Context, importPath string, pdoc *doc.Package) er
 	// package to the stored package.
 
 	keyName := importPath
-	if pdoc != nil && pdoc.ProjectPrefix == "" {
+	if pdoc != nil && pdoc.ProjectRoot == "" {
 		// Adjust standard package key name.
 		keyName = "/" + keyName
 	}
@@ -239,7 +239,7 @@ func updatePackage(c appengine.Context, importPath string, pdoc *doc.Package) er
 	if invalidateCache {
 		keys := []string{packageListKey}
 		if pdoc != nil {
-			keys = append(keys, projectListKeyPrefix+pdoc.ProjectPrefix)
+			keys = append(keys, projectListKeyPrefix+pdoc.ProjectRoot)
 		}
 		if err = cacheClear(c, keys...); err != nil {
 			return err

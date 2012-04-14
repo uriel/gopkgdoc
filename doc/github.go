@@ -26,7 +26,7 @@ var githubPattern = regexp.MustCompile(`^github\.com/([a-z0-9A-Z_.\-]+)/([a-z0-9
 
 func getGithubDoc(client *http.Client, m []string, savedEtag string) (*Package, error) {
 	importPath := m[0]
-	projectPrefix := "github.com/" + m[1] + "/" + m[2]
+	projectRoot := "github.com/" + m[1] + "/" + m[2]
 	projectName := m[2]
 	projectURL := "https://github.com/" + m[1] + "/" + m[2] + "/"
 
@@ -38,23 +38,9 @@ func getGithubDoc(client *http.Client, m []string, savedEtag string) (*Package, 
 		dir = dir[1:] + "/"
 	}
 
-	// There are two approaches for fetching files from Github:
-	//
-	// - Read the zipball or tarball.
-	//
-	// - Use the API to get a list of blobs in the repo and then fetch
-	//   the individual blobs.
-	//
-	// The second approach is used because it is faster and more reliable.
-
-	p, err := httpGet(client, "https://api.github.com/repos/"+userRepo+"/git/trees/master?recursive=1", nil, notFoundNotFound)
+	p, etag, err := httpGetBytesCompare(client, "https://api.github.com/repos/"+userRepo+"/git/trees/master?recursive=1", savedEtag)
 	if err != nil {
 		return nil, err
-	}
-
-	etag := hashBytes(p)
-	if etag == savedEtag {
-		return nil, ErrPackageNotModified
 	}
 
 	var tree struct {
@@ -64,8 +50,7 @@ func getGithubDoc(client *http.Client, m []string, savedEtag string) (*Package, 
 			Type string
 		}
 	}
-	err = json.Unmarshal(p, &tree)
-	if err != nil {
+	if err := json.Unmarshal(p, &tree); err != nil {
 		return nil, err
 	}
 
@@ -83,10 +68,9 @@ func getGithubDoc(client *http.Client, m []string, savedEtag string) (*Package, 
 		}
 	}
 
-	err = fetchFiles(client, files, githubRawHeader)
-	if err != nil {
+	if err := fetchFiles(client, files, githubRawHeader); err != nil {
 		return nil, err
 	}
 
-	return buildDoc(importPath, projectPrefix, projectName, projectURL, etag, "#L%d", files)
+	return buildDoc(importPath, projectRoot, projectName, projectURL, etag, "#L%d", files)
 }

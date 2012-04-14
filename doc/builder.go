@@ -321,9 +321,8 @@ func (b *builder) printNode(node interface{}) string {
 func (b *builder) printPos(pos token.Pos) string {
 	position := b.fset.Position(pos)
 	src := b.srcs[position.Filename]
-	if src == nil {
-		// The position can be outside the known set of files when line
-		// comments are used (//line <file>:<line>). 
+	if src == nil || src.browseURL == "" {
+		// src can be nil when line comments are used (//line <file>:<line>).
 		return ""
 	}
 	return src.browseURL + fmt.Sprintf(b.lineFmt, position.Line)
@@ -508,14 +507,14 @@ func (b *builder) openFile(path string) (io.ReadCloser, error) {
 }
 
 // PackageVersion is modified when previously stored packages are invalid.
-const PackageVersion = "1"
+const PackageVersion = "2"
 
 type Package struct {
 	// The import path for this package.
 	ImportPath string
 
 	// Import path prefix for all packages in the project.
-	ProjectPrefix string
+	ProjectRoot string
 
 	// Name of the project.
 	ProjectName string
@@ -555,7 +554,7 @@ type Package struct {
 	Etag string
 }
 
-func buildDoc(importPath, projectPrefix, projectName, projectURL, etag string, lineFmt string, srcs []*source) (*Package, error) {
+func buildDoc(importPath, projectRoot, projectName, projectURL, etag string, lineFmt string, srcs []*source) (*Package, error) {
 
 	b := &builder{
 		lineFmt:     lineFmt,
@@ -563,12 +562,12 @@ func buildDoc(importPath, projectPrefix, projectName, projectURL, etag string, l
 		importPaths: make(map[string]map[string]string),
 		srcs:        make(map[string]*source),
 		pkg: &Package{
-			ImportPath:    importPath,
-			ProjectName:   projectName,
-			ProjectPrefix: projectPrefix,
-			ProjectURL:    projectURL,
-			Etag:          etag,
-			Updated:       time.Now(),
+			ImportPath:  importPath,
+			ProjectName: projectName,
+			ProjectRoot: projectRoot,
+			ProjectURL:  projectURL,
+			Etag:        etag,
+			Updated:     time.Now(),
 		},
 	}
 

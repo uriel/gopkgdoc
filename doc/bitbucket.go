@@ -26,7 +26,7 @@ var bitbucketPattern = regexp.MustCompile(`^bitbucket\.org/([a-z0-9A-Z_.\-]+)/([
 func getBitbucketDoc(client *http.Client, m []string, savedEtag string) (*Package, error) {
 
 	importPath := m[0]
-	projectPrefix := "bitbucket.org/" + m[1] + "/" + m[2]
+	projectRoot := "bitbucket.org/" + m[1] + "/" + m[2]
 	projectName := m[2]
 	projectURL := "https://bitbucket.org/" + m[1] + "/" + m[2] + "/"
 	userRepo := m[1] + "/" + m[2]
@@ -40,25 +40,14 @@ func getBitbucketDoc(client *http.Client, m []string, savedEtag string) (*Packag
 	// Find the revision tag for tip and fetch the directory listing for that
 	// tag.  Mercurial repositories use the tag "tip". Git repositories use the
 	// tag "master".
-	var tag string
-	var p []byte
-	for _, t := range []string{"tip", "master"} {
-		var err error
-		p, err = httpGet(client, "https://api.bitbucket.org/1.0/repositories/"+userRepo+"/src/"+t+"/"+dir, nil, notFoundNotFound)
-		if err == nil {
-			tag = t
-			break
-		} else if err != ErrPackageNotFound {
-			return nil, err
-		}
+	tag := "tip"
+	p, etag, err := httpGetBytesCompare(client, "https://api.bitbucket.org/1.0/repositories/"+userRepo+"/src/"+tag+"/"+dir, savedEtag)
+	if err == ErrPackageNotFound {
+		tag = "master"
+		p, etag, err = httpGetBytesCompare(client, "https://api.bitbucket.org/1.0/repositories/"+userRepo+"/src/"+tag+"/"+dir, savedEtag)
 	}
-	if tag == "" {
-		return nil, ErrPackageNotFound
-	}
-
-	etag := hashBytes(p)
-	if etag == savedEtag {
-		return nil, ErrPackageNotModified
+	if err != nil {
+		return nil, err
 	}
 
 	var directory struct {
@@ -66,8 +55,7 @@ func getBitbucketDoc(client *http.Client, m []string, savedEtag string) (*Packag
 			Path string
 		}
 	}
-	err := json.Unmarshal(p, &directory)
-	if err != nil {
+	if err := json.Unmarshal(p, &directory); err != nil {
 		return nil, err
 	}
 
@@ -83,10 +71,9 @@ func getBitbucketDoc(client *http.Client, m []string, savedEtag string) (*Packag
 		}
 	}
 
-	err = fetchFiles(client, files, nil)
-	if err != nil {
+	if err := fetchFiles(client, files, nil); err != nil {
 		return nil, err
 	}
 
-	return buildDoc(importPath, projectPrefix, projectName, projectURL, etag, "#cl-%d", files)
+	return buildDoc(importPath, projectRoot, projectName, projectURL, etag, "#cl-%d", files)
 }

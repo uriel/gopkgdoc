@@ -15,11 +15,14 @@
 package doc
 
 import (
+	"encoding/xml"
 	"errors"
-	"log"
 	"net/http"
+	"path"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // service represents a source code control service.
@@ -37,10 +40,122 @@ var services = []*service{
 	&service{launchpadPattern, getLaunchpadDoc, "launchpad.net/"},
 }
 
-func Get(client *http.Client, importPath string, etag string) (*Package, error) {
-	if StandardPackages[importPath] {
-		return getStandardDoc(client, importPath, etag)
+func attrValue(attrs []xml.Attr, name string) string {
+	for _, a := range attrs {
+		if strings.EqualFold(a.Name.Local, name) {
+			return a.Value
+		}
 	}
+	return ""
+}
+
+func getMeta(client *http.Client, importPath string) (projectRoot, projectName, projectURL, repoRoot string, err error) {
+	var resp *http.Response
+
+	proto := "https://"
+	resp, err = client.Get(proto + importPath)
+	if err != nil || resp.StatusCode != 200 {
+		if err == nil {
+			resp.Body.Close()
+		}
+		proto = "http://"
+		resp, err = client.Get(proto + importPath)
+		if err != nil {
+			err = GetError{strings.SplitN(importPath, "/", 2)[0], err}
+			return
+		}
+	}
+	defer resp.Body.Close()
+
+	d := xml.NewDecoder(resp.Body)
+	d.Strict = false
+
+	err = ErrPackageNotFound
+	for {
+		t, tokenErr := d.Token()
+		if tokenErr != nil {
+			break
+		}
+		switch t := t.(type) {
+		case xml.EndElement:
+			if strings.EqualFold(t.Name.Local, "head") {
+				return
+			}
+		case xml.StartElement:
+			if strings.EqualFold(t.Name.Local, "body") {
+				return
+			}
+			if !strings.EqualFold(t.Name.Local, "meta") ||
+				attrValue(t.Attr, "name") != "go-import" {
+				continue
+			}
+			f := strings.Fields(attrValue(t.Attr, "content"))
+			if len(f) != 3 ||
+				!strings.HasPrefix(importPath, f[0]) ||
+				!(len(importPath) == len(f[0]) || importPath[len(f[0])] == '/') {
+				continue
+			}
+			if err == nil {
+				// More than one matching meta tag. Handle as not found.
+				err = ErrPackageNotFound
+				return
+			}
+			err = nil
+			projectRoot = f[0]
+			repoRoot = f[2]
+			_, projectName = path.Split(projectRoot)
+			projectURL = proto + projectRoot
+		}
+	}
+	return
+}
+
+// getDynamic gets a document from a service that is not statically known.
+func getDynamic(client *http.Client, importPath string, etag string) (*Package, error) {
+	projectRoot, projectName, projectURL, repoRoot, err := getMeta(client, importPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if projectRoot != importPath {
+		var projectRoot2 string
+		projectRoot2, projectName, projectURL, _, err = getMeta(client, projectRoot)
+		if err != nil {
+			return nil, err
+		}
+		if projectRoot2 != projectRoot {
+			return nil, ErrPackageNotFound
+		}
+	}
+
+	i := strings.Index(repoRoot, "://")
+	if i < 0 {
+		return nil, ErrPackageNotFound
+	}
+	importPath2 := repoRoot[i+len("://"):] + importPath[len(projectRoot):]
+
+	pdoc, err := getStatic(client, importPath2, etag)
+
+	if err == nil {
+		pdoc.ImportPath = importPath
+		pdoc.ProjectRoot = projectRoot
+		pdoc.ProjectName = projectName
+		pdoc.ProjectURL = projectURL
+		return pdoc, err
+	}
+
+	if err == errNoMatch {
+		return getProxyDoc(client, importPath, projectRoot, projectName, projectURL, etag)
+	}
+
+	return nil, err
+}
+
+var errNoMatch = errors.New("no match")
+
+// getStatic gets a document from a statically known service. getStatic returns
+// errNoMatch if the import path is not recognized.
+func getStatic(client *http.Client, importPath string, etag string) (*Package, error) {
 	for _, s := range services {
 		if !strings.HasPrefix(importPath, s.prefix) {
 			continue
@@ -50,11 +165,23 @@ func Get(client *http.Client, importPath string, etag string) (*Package, error) 
 			// Import path is bad if prefix matches and regexp does not.
 			return nil, ErrPackageNotFound
 		}
-		log.Println("!!!!!!!!")
 		return s.getDoc(client, m, etag)
 	}
-	log.Println("XXXXXXX!")
-	return nil, ErrPackageNotFound
+	return nil, errNoMatch
+}
+
+func Get(client *http.Client, importPath string, etag string) (*Package, error) {
+	if StandardPackages[importPath] {
+		return getStandardDoc(client, importPath, etag)
+	}
+	if isBadImportPath(importPath) {
+		return nil, ErrPackageNotFound
+	}
+	pdoc, err := getStatic(client, importPath, etag)
+	if err == errNoMatch {
+		pdoc, err = getDynamic(client, importPath, etag)
+	}
+	return pdoc, err
 }
 
 var (
@@ -74,4 +201,45 @@ func IsSupportedService(importPath string) bool {
 		}
 	}
 	return false
+}
+
+var validHost = regexp.MustCompile(`^[-A-Za-z0-9]+(?:\.[-A-Za-z0-9]+)+`)
+
+// IsBadImport path returns true if the importPath is structurally invalid.
+func isBadImportPath(importPath string) bool {
+
+	firstSlash := -1
+
+	// See isbadimport in $GOROOT/src/cmd/gc/subr.c for rune checks.
+	for i, r := range importPath {
+		if r == utf8.RuneError {
+			return true
+		}
+		if r < 0x20 || r == 0x7f {
+			return true
+		}
+		if r == '\\' {
+			return true
+		}
+		if unicode.IsSpace(r) {
+			return true
+		}
+		if strings.IndexRune("!\"#$%&'()*,:;<=>?[]^`{|}", r) >= 0 {
+			return true
+		}
+
+		if r == '/' && firstSlash < 0 {
+			firstSlash = i
+		}
+	}
+
+	if firstSlash > 255 {
+		return true
+	}
+
+	if firstSlash > 0 {
+		importPath = importPath[:firstSlash]
+	}
+
+	return !validHost.MatchString(importPath)
 }

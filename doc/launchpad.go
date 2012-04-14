@@ -16,7 +16,6 @@ package doc
 
 import (
 	"archive/tar"
-	"bytes"
 	"compress/gzip"
 	"io"
 	"io/ioutil"
@@ -31,15 +30,16 @@ var launchpadPattern = regexp.MustCompile(`^launchpad\.net/(([a-z0-9A-Z_.\-]+)(/
 func getLaunchpadDoc(client *http.Client, m []string, etag string) (*Package, error) {
 
 	if m[2] != "" && m[3] != "" {
-		_, err := httpGet(client, "https://code.launchpad.net/"+m[2]+m[3]+"/.bzr/branch-format", nil, notFoundNotFound)
+		rc, err := httpGet(client, "https://code.launchpad.net/"+m[2]+m[3]+"/.bzr/branch-format")
 		switch err {
+		case nil:
+			// The structure of the import path is launchpad.net/{project}/{series}/{dir}. 
+			// No fix up is needed.
+			rc.Close()
 		case ErrPackageNotFound:
 			// The structure of the import path is is launchpad.net/{project}/{dir}.
 			m[1] = m[2]
 			m[5] = m[3] + m[5]
-		case nil:
-			// The structure of the import path is launchpad.net/{project}/{series}/{dir}. 
-			// No fix up is needed.
 		default:
 			return nil, err
 		}
@@ -50,7 +50,7 @@ func getLaunchpadDoc(client *http.Client, m []string, etag string) (*Package, er
 	if projectName == "" {
 		projectName = m[1]
 	}
-	projectPrefix := "launchpad.net/" + projectName
+	projectRoot := "launchpad.net/" + projectName
 	projectURL := "https://launchpad.net/" + projectName + "/"
 
 	repo := m[1]
@@ -59,12 +59,13 @@ func getLaunchpadDoc(client *http.Client, m []string, etag string) (*Package, er
 		dir = dir[1:] + "/"
 	}
 
-	p, err := httpGet(client, "http://bazaar.launchpad.net/+branch/"+repo+"/tarball", nil, notFoundNotFound)
+	rc, err := httpGet(client, "http://bazaar.launchpad.net/+branch/"+repo+"/tarball")
 	if err != nil {
 		return nil, err
 	}
+	defer rc.Close()
 
-	gzr, err := gzip.NewReader(bytes.NewBuffer(p))
+	gzr, err := gzip.NewReader(rc)
 	if err != nil {
 		return nil, err
 	}
@@ -101,5 +102,5 @@ func getLaunchpadDoc(client *http.Client, m []string, etag string) (*Package, er
 		}
 	}
 
-	return buildDoc(importPath, projectPrefix, projectName, projectURL, etag, "#L%d", files)
+	return buildDoc(importPath, projectRoot, projectName, projectURL, etag, "#L%d", files)
 }

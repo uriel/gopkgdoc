@@ -72,28 +72,28 @@
 </ul>
 </div>
 
-<h3 id="files">Package Files</h3><p>{{range .Files}}<a href="{{.URL|html}}">{{.Name|html}}</a> {{end}}</p>
+<h3 id="files">Package Files</h3><p>{{range .Files}}{{template "SourceLink" .}} {{end}}</p>
 
 {{if .Consts}}<h3 id="constants">Constants</h3>{{range .Consts}}<pre>{{.Decl|decl}}</pre>{{.Doc|comment}}{{end}}{{end}}
 {{if .Vars}}<h3 id="variables">Variables</h3>{{range .Vars}}<pre>{{.Decl|decl}}</pre>{{.Doc|comment}}{{end}}{{end}}
 
-{{range .Funcs}}<h3 id="{{.Name|html}}">func <a href="{{.URL|html}}">{{.Name|html}}</a></h3>
+{{range .Funcs}}<h3 id="{{.Name|html}}">func {{template "SourceLink" .}}</h3>
 <p><code>{{.Decl|decl}}</code></p>{{.Doc|comment}}
 {{template "Examples" .}}
 {{end}}
 
-{{range $t := .Types}}<h3 id="{{.Name|html}}">type <a href="{{.URL|html}}">{{.Name|html}}</a></h3>
+{{range $t := .Types}}<h3 id="{{.Name|html}}">type {{template "SourceLink" .}}</h3>
 {{.Doc|comment}}<pre>{{.Decl|decl}}</pre>
 {{range .Consts}}<pre>{{.Decl|decl}}</pre>{{.Doc|comment}}{{end}}
 {{range .Vars}}<pre>{{.Decl|decl}}</pre>{{.Doc|comment}}{{end}}
 {{template "Examples" .}}
 
-{{range .Funcs}}<h4 id="{{.Name|html}}">func <a href="{{.URL|html}}">{{.Name|html}}</a></h4>
+{{range .Funcs}}<h4 id="{{.Name|html}}">func {{template "SourceLink" . }}</h4>
 <p><code>{{.Decl|decl}}</code></p>{{.Doc|comment}}
 {{template "Examples" .}}
 {{end}}
 
-{{range .Methods}}<h4 id="{{$t.Name|html}}.{{.Name|html}}">func ({{.Recv|html}}) <a href="{{.URL|html}}">{{.Name|html}}</a></h4>
+{{range .Methods}}<h4 id="{{$t.Name|html}}.{{.Name|html}}">func ({{.Recv|html}}) {{template "SourceLink" .}}</h4>
 <p><code>{{.Decl|decl}}</code></p>{{.Doc|comment}}
 {{template "Examples" .}}
 {{end}}
@@ -133,6 +133,8 @@
 </body>
 </html>
 {{end}}{{end}}
+
+{{define "SourceLink"}}{{if .URL}}<a href="{{.URL|html}}">{{.Name|html}}</a>{{else}}{{.Name|html}}{{end}}{{end}}
 
 {{define "ExampleLinks"}}{{range .Examples}} <a href="#example_{{.Name|html}}" title="Go to example" onclick="show('{{.Name|html}}')">☞ </a>{{end}}{{end}}
 

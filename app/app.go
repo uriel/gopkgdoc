@@ -50,11 +50,11 @@ func filterCmds(in []*Package) (out []*Package, cmds []*Package) {
 	return
 }
 
-func childPackages(c appengine.Context, projectPrefix, importPath string) ([]*Package, error) {
-	projectPkgs, err := queryPackages(c, projectListKeyPrefix+projectPrefix,
+func childPackages(c appengine.Context, projectRoot, importPath string) ([]*Package, error) {
+	projectPkgs, err := queryPackages(c, projectListKeyPrefix+projectRoot,
 		datastore.NewQuery("Package").
-			Filter("__key__ >", datastore.NewKey(c, "Package", projectPrefix+"/", 0, nil)).
-			Filter("__key__ <", datastore.NewKey(c, "Package", projectPrefix+"0", 0, nil)))
+			Filter("__key__ >", datastore.NewKey(c, "Package", projectRoot+"/", 0, nil)).
+			Filter("__key__ <", datastore.NewKey(c, "Package", projectRoot+"0", 0, nil)))
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func getDoc(c appengine.Context, importPath string) (*doc.Package, []*Package, e
 	item, err := cacheGet(c, cacheKey, &pdoc)
 	switch err {
 	case nil:
-		pkgs, err := childPackages(c, pdoc.ProjectPrefix, importPath)
+		pkgs, err := childPackages(c, pdoc.ProjectRoot, importPath)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -119,7 +119,7 @@ func getDoc(c appengine.Context, importPath string) (*doc.Package, []*Package, e
 
 	// Find the child packages.
 
-	pkgs, err := childPackages(c, pdoc.ProjectPrefix, importPath)
+	pkgs, err := childPackages(c, pdoc.ProjectRoot, importPath)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -248,7 +248,12 @@ func serveAPIIndex(w http.ResponseWriter, r *http.Request) error {
 	}
 	var buf bytes.Buffer
 	for _, key := range keys {
-		buf.WriteString(key.StringID())
+		importPath := key.StringID()
+		if importPath[0] == '/' {
+			// fix standard package.
+			importPath = importPath[1:]
+		}
+		buf.WriteString(importPath)
 		buf.WriteByte('\n')
 	}
 	w.Header().Set("Content-Length", strconv.Itoa(buf.Len()))
@@ -388,9 +393,9 @@ func serveHome(w http.ResponseWriter, r *http.Request) error {
 		indexTokens = append(indexTokens, name)
 	}
 	if pdoc != nil {
-		projectPrefix := strings.ToLower(pdoc.ProjectPrefix)
-		if projectPrefix != indexTokens[0] {
-			indexTokens = append(indexTokens, projectPrefix)
+		projectRoot := strings.ToLower(pdoc.ProjectRoot)
+		if projectRoot != indexTokens[0] {
+			indexTokens = append(indexTokens, projectRoot)
 		}
 	}
 

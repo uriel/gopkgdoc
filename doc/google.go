@@ -27,7 +27,7 @@ var googlePattern = regexp.MustCompile(`^code\.google\.com/p/([a-z0-9\-]+)(\.[a-
 func getGoogleDoc(client *http.Client, m []string, savedEtag string) (*Package, error) {
 
 	importPath := m[0]
-	projectPrefix := "code.google.com/p/" + m[1] + m[2]
+	projectRoot := "code.google.com/p/" + m[1] + m[2]
 	projectName := m[1] + m[2]
 	projectURL := "https://code.google.com/p/" + m[1] + "/"
 
@@ -42,14 +42,9 @@ func getGoogleDoc(client *http.Client, m []string, savedEtag string) (*Package, 
 	}
 
 	// Scrape the HTML project page to find the VCS.
-	p, err := httpGet(client, "http://code.google.com/p/"+repo+"/source/checkout", nil, notFoundNotFound)
+	p, err := httpGetBytes(client, "http://code.google.com/p/"+repo+"/source/checkout")
 	if err != nil {
 		return nil, err
-	}
-
-	etag := hashBytes(p)
-	if etag == savedEtag {
-		return nil, ErrPackageNotModified
 	}
 
 	var vcs string
@@ -60,7 +55,7 @@ func getGoogleDoc(client *http.Client, m []string, savedEtag string) (*Package, 
 	}
 
 	// Scrape the repo browser to find individual Go files.
-	p, err = httpGet(client, "http://"+subrepo+repo+".googlecode.com/"+vcs+"/"+dir, nil, notFoundNotFound)
+	p, etag, err := httpGetBytesCompare(client, "http://"+subrepo+repo+".googlecode.com/"+vcs+"/"+dir, savedEtag)
 	if err != nil {
 		return nil, err
 	}
@@ -81,25 +76,19 @@ func getGoogleDoc(client *http.Client, m []string, savedEtag string) (*Package, 
 		}
 	}
 
-	err = fetchFiles(client, files, nil)
-	if err != nil {
+	if err := fetchFiles(client, files, nil); err != nil {
 		return nil, err
 	}
 
-	return buildDoc(importPath, projectPrefix, projectName, projectURL, etag, "#%d", files)
+	return buildDoc(importPath, projectRoot, projectName, projectURL, etag, "#%d", files)
 }
 
 func getStandardDoc(client *http.Client, importPath string, savedEtag string) (*Package, error) {
 
 	// Scrape the repo browser to find individual Go files.
-	p, err := httpGet(client, "http://go.googlecode.com/hg-history/release/src/pkg/"+importPath+"/", nil, notFoundNotFound)
+	p, etag, err := httpGetBytesCompare(client, "http://go.googlecode.com/hg-history/release/src/pkg/"+importPath+"/", savedEtag)
 	if err != nil {
 		return nil, err
-	}
-
-	etag := hashBytes(p)
-	if etag == savedEtag {
-		return nil, ErrPackageNotModified
 	}
 
 	var files []*source
@@ -114,8 +103,7 @@ func getStandardDoc(client *http.Client, importPath string, savedEtag string) (*
 		}
 	}
 
-	err = fetchFiles(client, files, nil)
-	if err != nil {
+	if err := fetchFiles(client, files, nil); err != nil {
 		return nil, err
 	}
 
