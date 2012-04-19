@@ -83,7 +83,7 @@
 {{end}}
 
 {{range $t := .Types}}<h3 id="{{.Name|html}}">type {{template "SourceLink" .}}</h3>
-{{.Doc|comment}}<pre>{{.Decl|decl}}</pre>
+<pre>{{.Decl|decl}}</pre>{{.Doc|comment}}
 {{range .Consts}}<pre>{{.Decl|decl}}</pre>{{.Doc|comment}}{{end}}
 {{range .Vars}}<pre>{{.Decl|decl}}</pre>{{.Doc|comment}}{{end}}
 {{template "Examples" .}}
@@ -107,14 +107,14 @@
     <h4>Packages</h4>
     <table class="table table-condensed">
     <thead><tr><th>Path</th><th>Synopsis</th></tr></thead>
-    <tbody>{{range .}}<tr><td><a href="/pkg/{{.ImportPath|html}}">{{relativePath .ImportPath $.pdoc.ImportPath}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
+    <tbody>{{range .}}<tr><td><a href="/{{.ImportPath|html}}">{{relativePath .ImportPath $.pdoc.ImportPath}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
     </table>
   {{end}}
   {{with $.cmds}}
     <h4>Commands</h4>
     <table class="table table-condensed">
     <thead><tr><th>Path</th><th>Synopsis</th></tr></thead>
-    <tbody>{{range .}}<tr><td><a href="/pkg/{{.ImportPath|html}}">{{relativePath .ImportPath $.pdoc.ImportPath}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
+    <tbody>{{range .}}<tr><td><a href="/{{.ImportPath|html}}">{{relativePath .ImportPath $.pdoc.ImportPath}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
     </table>
   {{end}}
 {{end}}

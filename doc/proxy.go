@@ -53,7 +53,7 @@ func getProxyDoc(client *http.Client, importPath, projectRoot, projectName, proj
 		}
 		files = append(files, &source{
 			name:      hdr.Name,
-			browseURL: "", // TODO: need to browse the source files.
+			browseURL: "http://gosourcefile.appspot.com/" + importPath + "/" + hdr.Name,
 			data:      b})
 	}
 	return buildDoc(importPath, projectRoot, projectName, projectURL, etag, "#L%d", files)

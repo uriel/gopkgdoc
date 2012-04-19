@@ -22,7 +22,7 @@
     <h3 id="packages">Packages</h3>
     <table class="table table-condensed">
     <thead><tr><th>Path</th><th>Synopsis</th></tr></thead>
-    <tbody>{{range .}}<tr><td><a href="/pkg/{{.ImportPath|html}}">{{.ImportPath|importPath}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
+    <tbody>{{range .}}<tr><td><a href="/{{.ImportPath|html}}">{{.ImportPath|importPath}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
     </table>
   {{end}}
 
@@ -30,7 +30,7 @@
     <h3 id="commands">Commands</h3>
     <table class="table table-condensed">
     <thead><tr><th>Path</th><th>Synopsis</th></tr></thead>
-    <tbody>{{range .}}<tr><td><a href="/pkg/{{.ImportPath|html}}">{{.ImportPath|importPath}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
+    <tbody>{{range .}}<tr><td><a href="/{{.ImportPath|html}}">{{.ImportPath|importPath}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
     </table>
   {{end}}
 

@@ -162,17 +162,7 @@ func (f handlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func servePackage(w http.ResponseWriter, r *http.Request) error {
 	c := appengine.NewContext(r)
-
-	p := path.Clean(r.URL.Path)
-	if p == "/pkg" {
-		return executeTemplate(w, "notfound.html", 404, nil)
-	}
-	if p != r.URL.Path {
-		http.Redirect(w, r, p, 301)
-		return nil
-	}
-	importPath := p[len("/pkg/"):]
-
+	importPath := r.URL.Path[1:]
 	pdoc, pkgs, err := getDoc(c, importPath)
 	switch err {
 	case doc.ErrPackageNotFound:
@@ -202,7 +192,7 @@ func serveClearPackageCache(w http.ResponseWriter, r *http.Request) error {
 	err := memcache.Delete(c, cacheKey)
 	c.Infof("memcache.Delete(%s) -> %v", cacheKey, err)
 	removeDoc(c, importPath)
-	http.Redirect(w, r, "/pkg/"+importPath, 302)
+	http.Redirect(w, r, "/"+importPath, 302)
 	return nil
 }
 
@@ -362,8 +352,29 @@ func cleanImportPath(q string) string {
 func serveHome(w http.ResponseWriter, r *http.Request) error {
 	c := appengine.NewContext(r)
 
-	if r.URL.Path != "/" {
-		return executeTemplate(w, "notfound.html", 404, nil)
+	p := path.Clean(r.URL.Path)
+	if strings.HasPrefix(p, "/pkg/") {
+		p = p[len("/pkg"):]
+	}
+
+	if r.Host == "gopkgdoc.appspot.com" {
+		if r.URL.RawQuery != "" {
+			p = p + "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, "http://go.pkgdoc.org"+p, 301)
+		return nil
+	}
+
+	if p != r.URL.Path {
+		if r.URL.RawQuery != "" {
+			p = p + "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, p, 301)
+		return nil
+	}
+
+	if p != "/" {
+		return servePackage(w, r)
 	}
 
 	importPath := cleanImportPath(r.FormValue("q"))
@@ -377,7 +388,7 @@ func serveHome(w http.ResponseWriter, r *http.Request) error {
 	pdoc, _, err := getDoc(c, importPath)
 	switch err {
 	case nil:
-		http.Redirect(w, r, "/pkg/"+importPath, 302)
+		http.Redirect(w, r, "/"+importPath, 302)
 		return nil
 	case doc.ErrPackageNotFound:
 		pdoc = nil
@@ -437,10 +448,8 @@ func init() {
 	http.Handle("/", handlerFunc(serveHome))
 	http.Handle("/about", handlerFunc(serveAbout))
 	http.Handle("/index", handlerFunc(serveIndex))
-	http.Handle("/pkg/std", handlerFunc(serveGoIndex))
-	http.Handle("/packages", handlerFunc(servePackages))
-	http.Handle("/pkg/", handlerFunc(servePackage))
+	http.Handle("/std", handlerFunc(serveGoIndex))
 	http.Handle("/a/refresh", handlerFunc(serveClearPackageCache))
-	http.Handle("/api/index", handlerFunc(serveAPIIndex))
-	http.Handle("/api/update", http.HandlerFunc(serveAPIUpdate))
+	http.Handle("/a/index", handlerFunc(serveAPIIndex))
+	http.Handle("/a/update", http.HandlerFunc(serveAPIUpdate))
 }

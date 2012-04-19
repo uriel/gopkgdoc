@@ -90,11 +90,21 @@ func relativeTime(t time.Time) string {
 	return fmt.Sprintf("%d days ago", d/day)
 }
 
+var (
+	h3Open  = []byte("<h3 ")
+	h4Open  = []byte("<h4 ")
+	h3Close = []byte("</h3>")
+	h4Close = []byte("</h4>")
+)
+
 // commentFmt formats a source code control comment as HTML.
 func commentFmt(v string) string {
 	var buf bytes.Buffer
 	godoc.ToHTML(&buf, v, nil)
-	return buf.String()
+	p := buf.Bytes()
+	p = bytes.Replace(p, h3Open, h4Open, -1)
+	p = bytes.Replace(p, h3Close, h4Close, -1)
+	return string(p)
 }
 
 // declFmt formats a Decl as HTML.
@@ -109,7 +119,7 @@ func declFmt(decl doc.Decl) string {
 		case p == "":
 			link = true
 		case doc.IsSupportedService(p):
-			p = "/pkg/" + p
+			p = "/" + p
 			link = true
 		}
 		if link {
@@ -140,13 +150,13 @@ func breadcrumbsFmt(pdoc *doc.Package) string {
 	j := len(pdoc.ProjectRoot)
 	switch {
 	case j == 0:
-		buf.WriteString("<a href=\"/pkg/std\" title=\"Standard Packages\">☆</a> ")
+		buf.WriteString("<a href=\"/std\" title=\"Standard Packages\">☆</a> ")
 		j = bytes.IndexByte(importPath, '/')
 	case j >= len(importPath):
 		j = -1
 	}
 	for j > 0 {
-		buf.WriteString(`<a href="/pkg/`)
+		buf.WriteString(`<a href="/`)
 		template.HTMLEscape(&buf, importPath[:i+j])
 		buf.WriteString(`">`)
 		template.HTMLEscape(&buf, importPath[i:i+j])
