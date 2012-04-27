@@ -204,6 +204,7 @@ func IsSupportedService(importPath string) bool {
 }
 
 var validHost = regexp.MustCompile(`^[-A-Za-z0-9]+(?:\.[-A-Za-z0-9]+)+`)
+var badTLDs = []string{".png", ".html", ".jpg", ".ico", ".txt", ".xml"}
 
 // IsBadImport path returns true if the importPath is structurally invalid.
 func isBadImportPath(importPath string) bool {
@@ -239,6 +240,12 @@ func isBadImportPath(importPath string) bool {
 
 	if firstSlash > 0 {
 		importPath = importPath[:firstSlash]
+	}
+
+	for _, tld := range badTLDs {
+		if strings.HasSuffix(importPath, tld) {
+			return true
+		}
 	}
 
 	return !validHost.MatchString(importPath)

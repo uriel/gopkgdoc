@@ -147,6 +147,19 @@ func getDoc(c appengine.Context, importPath string) (*doc.Package, []*Package, e
 type handlerFunc func(http.ResponseWriter, *http.Request) error
 
 func (f handlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
+	if r.Host == "gopkgdoc.appspot.com" {
+		p := r.URL.Path
+		if strings.HasPrefix(p, "/pkg/") {
+			p = p[len("/pkg"):]
+		}
+		if r.URL.RawQuery != "" {
+			p = p + "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, "http://go.pkgdoc.org"+p, 301)
+		return
+	}
+
 	err := f(w, r)
 	if err != nil {
 		appengine.NewContext(r).Errorf("Error %s", err.Error())
@@ -162,6 +175,13 @@ func (f handlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func servePackage(w http.ResponseWriter, r *http.Request) error {
 	c := appengine.NewContext(r)
+
+	p := path.Clean(r.URL.Path)
+	if p != r.URL.Path {
+		http.Redirect(w, r, p, 301)
+		return nil
+	}
+
 	importPath := r.URL.Path[1:]
 	pdoc, pkgs, err := getDoc(c, importPath)
 	switch err {
@@ -249,6 +269,21 @@ func serveAPIIndex(w http.ResponseWriter, r *http.Request) error {
 	w.Header().Set("Content-Length", strconv.Itoa(buf.Len()))
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	_, err = w.Write(buf.Bytes())
+	return err
+}
+
+func serveAPIHide(w http.ResponseWriter, r *http.Request) error {
+	// This is a hack.
+	c := appengine.NewContext(r)
+	importPath := r.FormValue("importPath")
+	key := datastore.NewKey(c, "Package", importPath, 0, nil)
+	var pkg Package
+	err := datastore.Get(c, key, &pkg)
+	if err != nil {
+		return err
+	}
+	pkg.Hide = true
+	_, err = datastore.Put(c, key, &pkg)
 	return err
 }
 
@@ -350,33 +385,11 @@ func cleanImportPath(q string) string {
 }
 
 func serveHome(w http.ResponseWriter, r *http.Request) error {
-	c := appengine.NewContext(r)
-
-	p := path.Clean(r.URL.Path)
-	if strings.HasPrefix(p, "/pkg/") {
-		p = p[len("/pkg"):]
-	}
-
-	if r.Host == "gopkgdoc.appspot.com" {
-		if r.URL.RawQuery != "" {
-			p = p + "?" + r.URL.RawQuery
-		}
-		http.Redirect(w, r, "http://go.pkgdoc.org"+p, 301)
-		return nil
-	}
-
-	if p != r.URL.Path {
-		if r.URL.RawQuery != "" {
-			p = p + "?" + r.URL.RawQuery
-		}
-		http.Redirect(w, r, p, 301)
-		return nil
-	}
-
-	if p != "/" {
+	if r.URL.Path != "/" {
 		return servePackage(w, r)
 	}
 
+	c := appengine.NewContext(r)
 	importPath := cleanImportPath(r.FormValue("q"))
 
 	// Display simple home page when no query.
@@ -452,4 +465,5 @@ func init() {
 	http.Handle("/a/refresh", handlerFunc(serveClearPackageCache))
 	http.Handle("/a/index", handlerFunc(serveAPIIndex))
 	http.Handle("/a/update", http.HandlerFunc(serveAPIUpdate))
+	//http.Handle("/a/hide", handlerFunc(serveAPIHide))
 }

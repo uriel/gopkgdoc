@@ -4,6 +4,7 @@
 <head>
   {{template "CommonHead"}}
   <title>{{if .IsCmd}}{{.|commandName}}{{else}}{{.Name|html}}{{end}} - GoPkgDoc</title>
+  {{if .Synopsis}}<meta name="description" content="{{.ProjectName|html}}: {{.Synopsis|html}}">{{end}}
   <script language="javascript"> 
     function show(id) {
       var a = document.getElementById("example_" + id);
