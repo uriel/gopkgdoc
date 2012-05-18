@@ -23,6 +23,7 @@ import (
 	"appengine/urlfetch"
 	"bytes"
 	"doc"
+	"encoding/gob"
 	"fmt"
 	"io"
 	"net/http"
@@ -272,6 +273,40 @@ func serveAPIIndex(w http.ResponseWriter, r *http.Request) error {
 	return err
 }
 
+func serveAPIDump(w http.ResponseWriter, r *http.Request) error {
+	c := appengine.NewContext(r)
+	var pkgs []*Package
+	keys, err := datastore.NewQuery("Package").GetAll(c, &pkgs)
+	if err != nil {
+		return err
+	}
+	for i := range keys {
+		importPath := keys[i].StringID()
+		pkgs[i].ImportPath = importPath
+	}
+	return gob.NewEncoder(w).Encode(pkgs)
+}
+
+func serveAPILoad(w http.ResponseWriter, r *http.Request) error {
+	c := appengine.NewContext(r)
+	var pkgs []*Package
+	err := gob.NewDecoder(r.Body).Decode(&pkgs)
+	if err != nil {
+		return err
+	}
+	for _, pkg := range pkgs {
+		key := datastore.NewKey(c, "Package", pkg.ImportPath, 0, nil)
+		if _, err := datastore.Put(c, key, pkg); err != nil {
+			c.Infof("%s %v", pkg.ImportPath, err)
+		}
+	}
+	err = memcache.Delete(c, packageListKey)
+	if err != nil {
+		c.Infof("clear %v", err)
+	}
+	return nil
+}
+
 func serveAPIHide(w http.ResponseWriter, r *http.Request) error {
 	// This is a hack.
 	c := appengine.NewContext(r)
@@ -465,5 +500,7 @@ func init() {
 	http.Handle("/a/refresh", handlerFunc(serveClearPackageCache))
 	http.Handle("/a/index", handlerFunc(serveAPIIndex))
 	http.Handle("/a/update", http.HandlerFunc(serveAPIUpdate))
+	//http.Handle("/a/dump", handlerFunc(serveAPIDump))
+	//http.Handle("/a/load", handlerFunc(serveAPILoad))
 	//http.Handle("/a/hide", handlerFunc(serveAPIHide))
 }
