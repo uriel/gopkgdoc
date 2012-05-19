@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"path"
 	"reflect"
+	"regexp"
 	"strings"
 	"text/template"
 	"time"
@@ -91,10 +92,12 @@ func relativeTime(t time.Time) string {
 }
 
 var (
-	h3Open  = []byte("<h3 ")
-	h4Open  = []byte("<h4 ")
-	h3Close = []byte("</h3>")
-	h4Close = []byte("</h4>")
+	h3Open     = []byte("<h3 ")
+	h4Open     = []byte("<h4 ")
+	h3Close    = []byte("</h3>")
+	h4Close    = []byte("</h4>")
+	rfcRE      = regexp.MustCompile(`RFC\s+(\d{3,4})`)
+	rfcReplace = []byte(`<a href="http://tools.ietf.org/html/rfc$1">$0</a>`)
 )
 
 // commentFmt formats a source code control comment as HTML.
@@ -104,6 +107,7 @@ func commentFmt(v string) string {
 	p := buf.Bytes()
 	p = bytes.Replace(p, h3Open, h4Open, -1)
 	p = bytes.Replace(p, h3Close, h4Close, -1)
+	p = rfcRE.ReplaceAll(p, rfcReplace)
 	return string(p)
 }
 
