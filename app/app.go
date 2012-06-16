@@ -288,6 +288,10 @@ func serveAPIDump(w http.ResponseWriter, r *http.Request) error {
 }
 
 func serveAPILoad(w http.ResponseWriter, r *http.Request) error {
+	if r.Method != "POST" {
+		http.Error(w, "Method not supported.", http.StatusMethodNotAllowed)
+		return nil
+	}
 	c := appengine.NewContext(r)
 	var pkgs []*Package
 	err := gob.NewDecoder(r.Body).Decode(&pkgs)
@@ -308,18 +312,30 @@ func serveAPILoad(w http.ResponseWriter, r *http.Request) error {
 }
 
 func serveAPIHide(w http.ResponseWriter, r *http.Request) error {
-	// This is a hack.
+	if r.Method != "POST" {
+		http.Error(w, "Method not supported.", http.StatusMethodNotAllowed)
+		return nil
+	}
 	c := appengine.NewContext(r)
 	importPath := r.FormValue("importPath")
 	key := datastore.NewKey(c, "Package", importPath, 0, nil)
 	var pkg Package
 	err := datastore.Get(c, key, &pkg)
+	if err == datastore.ErrNoSuchEntity {
+        io.WriteString(w, "no entity\n")
+        return nil
+    }
 	if err != nil {
 		return err
 	}
-	pkg.Hide = true
-	_, err = datastore.Put(c, key, &pkg)
-	return err
+    if pkg.Hide {
+        io.WriteString(w, "hide\n")
+        return nil
+    }
+    pkg.Hide = true
+    _, err = datastore.Put(c, key, &pkg)
+    io.WriteString(w, "ok\n")
+	return nil
 }
 
 func serveAPIUpdate(w http.ResponseWriter, r *http.Request) {
