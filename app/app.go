@@ -246,8 +246,8 @@ func serveIndex(w http.ResponseWriter, r *http.Request) error {
 	})
 }
 
-func servePackages(w http.ResponseWriter, r *http.Request) error {
-	http.Redirect(w, r, "/index", 301)
+func rediretIndex(w http.ResponseWriter, r *http.Request) error {
+	http.Redirect(w, r, "/-/index", 301)
 	return nil
 }
 
@@ -322,19 +322,19 @@ func serveAPIHide(w http.ResponseWriter, r *http.Request) error {
 	var pkg Package
 	err := datastore.Get(c, key, &pkg)
 	if err == datastore.ErrNoSuchEntity {
-        io.WriteString(w, "no entity\n")
-        return nil
-    }
+		io.WriteString(w, "no entity\n")
+		return nil
+	}
 	if err != nil {
 		return err
 	}
-    if pkg.Hide {
-        io.WriteString(w, "hide\n")
-        return nil
-    }
-    pkg.Hide = true
-    _, err = datastore.Put(c, key, &pkg)
-    io.WriteString(w, "ok\n")
+	if pkg.Hide {
+		io.WriteString(w, "hide\n")
+		return nil
+	}
+	pkg.Hide = true
+	_, err = datastore.Put(c, key, &pkg)
+	io.WriteString(w, "ok\n")
 	return nil
 }
 
@@ -510,10 +510,11 @@ func serveAbout(w http.ResponseWriter, r *http.Request) error {
 
 func init() {
 	http.Handle("/", handlerFunc(serveHome))
-	http.Handle("/about", handlerFunc(serveAbout))
-	http.Handle("/index", handlerFunc(serveIndex))
-	http.Handle("/std", handlerFunc(serveGoIndex))
-	http.Handle("/a/refresh", handlerFunc(serveClearPackageCache))
+	http.Handle("/index", handlerFunc(rediretIndex)) // Delete this in late 2012.
+	http.Handle("/-/about", handlerFunc(serveAbout))
+	http.Handle("/-/index", handlerFunc(serveIndex))
+	http.Handle("/-/go", handlerFunc(serveGoIndex))
+	http.Handle("/-/refresh", handlerFunc(serveClearPackageCache))
 	http.Handle("/a/index", handlerFunc(serveAPIIndex))
 	http.Handle("/a/update", http.HandlerFunc(serveAPIUpdate))
 	//http.Handle("/a/dump", handlerFunc(serveAPIDump))

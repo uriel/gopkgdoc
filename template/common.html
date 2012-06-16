@@ -1,6 +1,6 @@
 {{define "CommonHead"}}
 <meta charset="utf-8">
-<link href="/static/css/bootstrap.css?v=6" rel="stylesheet">
+<link href="/-/static/css/bootstrap.css?v=6" rel="stylesheet">
 {{end}}
 
 {{define "NavBar"}}
@@ -10,8 +10,8 @@
       <a class="brand" href="/">GoPkgDoc</a>
       <ul class="nav">
         <li{{if equal . "home"}} class="active"{{end}}><a href="/">Home</a></li>
-        <li{{if equal . "index"}} class="active"{{end}}><a href="/index">Index</a></li>
-        <li{{if equal . "about"}} class="active"{{end}}><a href="/about">About</a></li>
+        <li{{if equal . "index"}} class="active"{{end}}><a href="/-/index">Index</a></li>
+        <li{{if equal . "about"}} class="active"{{end}}><a href="/-/about">About</a></li>
       </ul>
     </div>
   </div>

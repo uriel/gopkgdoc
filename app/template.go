@@ -154,7 +154,7 @@ func breadcrumbsFmt(pdoc *doc.Package) string {
 	j := len(pdoc.ProjectRoot)
 	switch {
 	case j == 0:
-		buf.WriteString("<a href=\"/std\" title=\"Standard Packages\">☆</a> ")
+		buf.WriteString("<a href=\"/-/go\" title=\"Standard Packages\">☆</a> ")
 		j = bytes.IndexByte(importPath, '/')
 	case j >= len(importPath):
 		j = -1

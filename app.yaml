@@ -21,7 +21,7 @@ handlers:
   static_files: static/empty.txt
   upload: static/empty.txt
 
-- url: /static
+- url: /-/static
   static_dir: static
   expiration: 30d
 
