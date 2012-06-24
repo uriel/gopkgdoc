@@ -21,7 +21,7 @@ import (
 )
 
 // This list of deprecated exports is used to find code that has not been
-// updated for Go 1. There's a fair amount of it in the wild.
+// updated for Go 1.
 var deprecatedExports = map[string][]string{
 	"bytes":         []string{"Add"},
 	"crypto/aes":    []string{"Cipher"},

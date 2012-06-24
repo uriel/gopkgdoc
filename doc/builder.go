@@ -149,7 +149,7 @@ func (b *builder) fileImportPaths(filename string) map[string]string {
 
 	file := b.ast.Files[filename]
 	if file == nil {
-		// THe code can reference files outside the known set of files
+		// The code can reference files outside the known set of files
 		// when line comments are used (//line <file>:<line>).
 		return importPaths
 	}
@@ -534,6 +534,13 @@ type Package struct {
 	// The time this object was created.
 	Updated time.Time
 
+	// Cache validation tag. This tag is not necessarily an HTTP entity tag.
+	// The tag is "" if there is no meaningful cache validation for the VCS.
+	Etag string
+
+	// Value of PackageVersion when this struct was created.
+	Version string
+
 	// Package name or "" if no package for this import path. The proceeding
 	// fields are set even if a package is not found for the import path.
 	Name string
@@ -557,7 +564,9 @@ type Package struct {
 	// Source files.
 	Files []*File
 
-	Etag string
+	// Imports
+	Imports     []string
+	TestImports []string
 }
 
 func buildDoc(importPath, projectRoot, projectName, projectURL, etag string, lineFmt string, srcs []*source) (*Package, error) {
@@ -574,6 +583,7 @@ func buildDoc(importPath, projectRoot, projectName, projectURL, etag string, lin
 			ProjectURL:  projectURL,
 			Etag:        etag,
 			Updated:     time.Now(),
+			Version:     PackageVersion,
 		},
 	}
 
@@ -653,6 +663,9 @@ func buildDoc(importPath, projectRoot, projectName, projectURL, etag string, lin
 	b.pkg.Funcs = b.funcs(pdoc.Funcs)
 	b.pkg.Types = b.types(pdoc.Types)
 	b.pkg.Vars = b.values(pdoc.Vars)
+
+	b.pkg.Imports = pkg.Imports
+	b.pkg.TestImports = pkg.TestImports
 
 	return b.pkg, nil
 }
