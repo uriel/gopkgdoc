@@ -73,7 +73,7 @@ func childPackages(c appengine.Context, projectRoot, importPath string) ([]*Pack
 // getDoc gets the package documentation and child packages for the given import path.
 func getDoc(c appengine.Context, importPath string) (*doc.Package, []*Package, error) {
 
-	// Look for doc in memory cache.
+	// 1. Look for doc in cache.
 
 	cacheKey := docKeyPrefix + importPath
 	var pdoc *doc.Package
@@ -91,55 +91,58 @@ func getDoc(c appengine.Context, importPath string) (*doc.Package, []*Package, e
 		return nil, nil, err
 	}
 
-	// Look for doc in datastore.
+	// 2. Look for doc in store.
 
 	pdocSaved, etag, err := loadDoc(c, importPath)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Get documentation from the version control service.
+	// 3. Get documentation from the version control service and update
+	// datastore and cache as needed.
 
 	pdoc, err = doc.Get(urlfetch.Client(c), importPath, etag)
-	c.Infof("Fetched %s from source, err=%v.", importPath, err)
+	c.Infof("Fetched %s from VCS, err=%v.", importPath, err)
 
-	if err == nil || err == doc.ErrPackageNotFound {
+	switch err {
+	case nil:
 		if err := updatePackage(c, importPath, pdoc); err != nil {
 			return nil, nil, err
 		}
-	}
-
-	if err == doc.ErrPackageNotModified {
+		item.Object = pdoc
+		item.Expiration = time.Hour
+		if err := cacheSet(c, item); err != nil {
+			return nil, nil, err
+		}
+	case doc.ErrPackageNotFound:
+		if err := updatePackage(c, importPath, nil); err != nil {
+			return nil, nil, err
+		}
+		return nil, nil, doc.ErrPackageNotFound
+	case doc.ErrPackageNotModified:
 		pdoc = pdocSaved
-		err = nil
+	default:
+		if pdocSaved == nil {
+			return nil, nil, err
+		}
+		c.Errorf("Serving %s from store after error from VCS.", importPath)
+		pdoc = pdocSaved
 	}
 
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Find the child packages.
+	// 4. Find the child packages.
 
 	pkgs, err := childPackages(c, pdoc.ProjectRoot, importPath)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Cache the documentation. To prevent the cache from growing without
-	// bound, we only cache the doc if it contains a valid package or if
-	// it's a parent of a package in the index.
-	if pdoc.Name != "" || len(pkgs) > 0 {
-		item.Object = pdoc
-		item.Expiration = time.Hour
-		if err := cacheSet(c, item); err != nil {
-			return nil, nil, err
-		}
-	}
+	// 5. Convert to not found if package is empty.
 
 	if len(pkgs) == 0 && pdoc.Name == "" && len(pdoc.Errors) == 0 {
-		// If we don't have anything to display, then treat it as not found.
 		return nil, nil, doc.ErrPackageNotFound
 	}
+
+	// 6. Done
 
 	return pdoc, pkgs, nil
 }

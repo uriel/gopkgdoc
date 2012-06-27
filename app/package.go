@@ -178,12 +178,26 @@ func updatePackage(c appengine.Context, importPath string, pdoc *doc.Package) er
 		if err := datastore.Delete(c, key); err != datastore.ErrNoSuchEntity && err != nil {
 			c.Errorf("Delete(%s) -> %v", importPath, err)
 		}
-	} else if pdoc.Etag != "" {
+	} else {
 		var buf bytes.Buffer
 		err := gob.NewEncoder(&buf).Encode(pdoc)
 		if err != nil {
 			return err
 		}
+
+		if buf.Len() > 800000 {
+			pdoc.Errors = append(pdoc.Errors, "Documentation truncated.")
+			pdoc.Vars = nil
+			pdoc.Funcs = nil
+			pdoc.Types = nil
+			pdoc.Consts = nil
+			buf.Reset()
+			err := gob.NewEncoder(&buf).Encode(pdoc)
+			if err != nil {
+				return err
+			}
+		}
+
 		doc := Doc{
 			Version: doc.PackageVersion,
 			Gob:     buf.Bytes(),

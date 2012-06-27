@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"path"
 	"regexp"
+	"strings"
 )
 
 var githubRawHeader = http.Header{"Accept": {"application/vnd.github-blob.raw"}}
@@ -54,18 +55,26 @@ func getGithubDoc(client *http.Client, m []string, savedEtag string) (*Package, 
 		return nil, err
 	}
 
+	inTree := false
 	var files []*source
 	for _, node := range tree.Tree {
-		if node.Type == "blob" && isDocFile(node.Path) {
-			d, f := path.Split(node.Path)
-			if d == dir {
-				files = append(files, &source{
-					name:      f,
-					browseURL: "https://github.com/" + userRepo + "/blob/master/" + dir + f,
-					rawURL:    node.Url,
-				})
-			}
+		if node.Type != "blob" ||
+			!isDocFile(node.Path) ||
+			!strings.HasPrefix(node.Path, dir) {
+			continue
 		}
+		inTree = true
+		if d, f := path.Split(node.Path); d == dir {
+			files = append(files, &source{
+				name:      f,
+				browseURL: "https://github.com/" + userRepo + "/blob/master/" + node.Path,
+				rawURL:    node.Url,
+			})
+		}
+	}
+
+	if !inTree {
+		return nil, ErrPackageNotFound
 	}
 
 	if err := fetchFiles(client, files, githubRawHeader); err != nil {

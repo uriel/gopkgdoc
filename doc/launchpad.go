@@ -16,6 +16,7 @@ package doc
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"io"
 	"io/ioutil"
@@ -27,7 +28,7 @@ import (
 
 var launchpadPattern = regexp.MustCompile(`^launchpad\.net/(([a-z0-9A-Z_.\-]+)(/[a-z0-9A-Z_.\-]+)?|~[a-z0-9A-Z_.\-]+/(\+junk|[a-z0-9A-Z_.\-]+)/[a-z0-9A-Z_.\-]+)(/[a-z0-9A-Z_.\-/]+)*$`)
 
-func getLaunchpadDoc(client *http.Client, m []string, etag string) (*Package, error) {
+func getLaunchpadDoc(client *http.Client, m []string, savedEtag string) (*Package, error) {
 
 	if m[2] != "" && m[3] != "" {
 		rc, err := httpGet(client, "https://code.launchpad.net/"+m[2]+m[3]+"/.bzr/branch-format")
@@ -59,13 +60,12 @@ func getLaunchpadDoc(client *http.Client, m []string, etag string) (*Package, er
 		dir = dir[1:] + "/"
 	}
 
-	rc, err := httpGet(client, "http://bazaar.launchpad.net/+branch/"+repo+"/tarball")
+	p, etag, err := httpGetBytesCompare(client, "http://bazaar.launchpad.net/+branch/"+repo+"/tarball", savedEtag)
 	if err != nil {
 		return nil, err
 	}
-	defer rc.Close()
 
-	gzr, err := gzip.NewReader(rc)
+	gzr, err := gzip.NewReader(bytes.NewReader(p))
 	if err != nil {
 		return nil, err
 	}
@@ -73,6 +73,7 @@ func getLaunchpadDoc(client *http.Client, m []string, etag string) (*Package, er
 
 	tr := tar.NewReader(gzr)
 
+	inTree := false
 	prefix := "+branch/" + repo + "/"
 	var files []*source
 	for {
@@ -86,11 +87,13 @@ func getLaunchpadDoc(client *http.Client, m []string, etag string) (*Package, er
 		if !strings.HasPrefix(hdr.Name, prefix) {
 			continue
 		}
-		d, f := path.Split(hdr.Name[len(prefix):])
-		if !isDocFile(f) {
+		name := hdr.Name[len(prefix):]
+		if !isDocFile(name) ||
+			!strings.HasPrefix(name, dir) {
 			continue
 		}
-		if d == dir {
+		inTree = true
+		if d, f := path.Split(hdr.Name[len(prefix):]); d == dir {
 			b, err := ioutil.ReadAll(tr)
 			if err != nil {
 				return nil, err
@@ -100,6 +103,10 @@ func getLaunchpadDoc(client *http.Client, m []string, etag string) (*Package, er
 				browseURL: "http://bazaar.launchpad.net/+branch/" + repo + "/view/head:/" + hdr.Name[len(prefix):],
 				data:      b})
 		}
+	}
+
+	if !inTree {
+		return nil, ErrPackageNotFound
 	}
 
 	return buildDoc(importPath, projectRoot, projectName, projectURL, etag, "#L%d", files)
