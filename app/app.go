@@ -102,7 +102,6 @@ func getDoc(c appengine.Context, importPath string) (*doc.Package, []*Package, e
 	// datastore and cache as needed.
 
 	pdoc, err = doc.Get(urlfetch.Client(c), importPath, etag)
-	c.Infof("Fetched %s from VCS, err=%v.", importPath, err)
 
 	switch err {
 	case nil:
@@ -389,7 +388,7 @@ func importPathFromGoogleBrowse(m []string) string {
 	return "code.google.com/p/" + project + subrepo + dir
 }
 
-var importPathCleaners = []struct {
+var queryCleaners = []struct {
 	pat *regexp.Regexp
 	fn  func([]string) string
 }{
@@ -420,20 +419,25 @@ var importPathCleaners = []struct {
 	},
 }
 
-func cleanImportPath(q string) string {
-	q = strings.Trim(q, "\"/ \t\n")
-	if q == "" {
-		return ""
+func cleanQuery(q string) string {
+	q = strings.TrimSpace(q)
+	if len(q) == 0 {
+		return q
 	}
-	for _, c := range importPathCleaners {
+	if q[0] == '"' && q[len(q)-1] == '"' && !strings.Contains(q, " ") {
+		q = q[1 : len(q)-1]
+	}
+	for _, c := range queryCleaners {
 		if m := c.pat.FindStringSubmatch(q); m != nil {
 			q = c.fn(m)
 			break
 		}
 	}
-	q = path.Clean(q)
-	if q == "." {
-		q = ""
+	if len(q) == 0 {
+		return q
+	}
+	if q[len(q)-1] == '/' {
+		q = q[:len(q)-1]
 	}
 	return q
 }
@@ -444,67 +448,52 @@ func serveHome(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	c := appengine.NewContext(r)
-	importPath := cleanImportPath(r.FormValue("q"))
 
-	// Display simple home page when no query.
-	if importPath == "" {
-		return executeTemplate(w, "home.html", 200,
-			map[string]interface{}{"Host": r.Host})
+	q := r.FormValue("q")
+	if q == "" {
+		return executeTemplate(w, "home.html", 200, nil)
 	}
 
-	pdoc, _, err := getDoc(c, importPath)
-	switch err {
-	case nil:
-		http.Redirect(w, r, "/"+importPath, 302)
-		return nil
-	case doc.ErrPackageNotFound:
-		pdoc = nil
-	default:
+	q = cleanQuery(q)
+	if len(q) == 0 {
+		return executeTemplate(w, "results.html", 200, map[string]interface{}{"q": q, "pkgs": nil})
+	}
+
+	// If the query looks like a go-gettable import path, then get the
+	// documentation by import path. This will fetch the documentation from the
+	// VCS if we have not seen this import path before.
+	if doc.ValidRemotePath(q) {
+		_, _, err := getDoc(c, q)
+		switch err {
+		case nil:
+			// Automatic I'm feeling lucky.
+			http.Redirect(w, r, "/"+q, 302)
+			return nil
+		case doc.ErrPackageNotFound:
+			// Continue on to search.
+		default:
+			return err
+		}
+	}
+
+	// Search for the package. Replace this with real search.
+
+	_, token := path.Split(q)
+	var pkgs []*Package
+	keys, err := datastore.NewQuery("Package").Filter("IndexTokens=", token).GetAll(c, &pkgs)
+	if err != nil {
 		return err
 	}
-
-	// Find suggested import paths.
-
-	indexTokens := make([]string, 1, 3)
-	indexTokens[0] = strings.ToLower(importPath)
-	if _, name := path.Split(indexTokens[0]); name != indexTokens[0] {
-		indexTokens = append(indexTokens, name)
-	}
-	if pdoc != nil {
-		projectRoot := strings.ToLower(pdoc.ProjectRoot)
-		if projectRoot != indexTokens[0] {
-			indexTokens = append(indexTokens, projectRoot)
+	for i := range keys {
+		importPath := keys[i].StringID()
+		if importPath[0] == '/' {
+			// Standard packages start with "/"
+			importPath = importPath[1:]
 		}
+		pkgs[i].ImportPath = importPath
 	}
 
-	ch := make(chan []*datastore.Key, len(indexTokens))
-	for _, token := range indexTokens {
-		go func(token string) {
-			keys, err := datastore.NewQuery("Package").Filter("IndexTokens=", token).KeysOnly().GetAll(c, nil)
-			if err != nil {
-				c.Errorf("Query(IndexTokens=%s) -> %v", token, err)
-			}
-			ch <- keys
-		}(token)
-	}
-
-	m := make(map[string]bool)
-	for _ = range indexTokens {
-		for _, key := range <-ch {
-			m[key.StringID()] = true
-		}
-	}
-
-	importPaths := make([]string, 0, len(m))
-	for p := range m {
-		if p[0] == '/' {
-			p = p[1:]
-		}
-		importPaths = append(importPaths, p)
-	}
-
-	return executeTemplate(w, "search.html", 200,
-		map[string]interface{}{"importPath": importPath, "suggestions": importPaths})
+	return executeTemplate(w, "results.html", 200, map[string]interface{}{"q": q, "pkgs": pkgs})
 }
 
 func serveAbout(w http.ResponseWriter, r *http.Request) error {

@@ -10,10 +10,10 @@
   {{template "NavBar" "home"}}
   <div class="container">
     <div class="row">
-      <div class="hero-unit span8">
+      <div class="hero-unit">
         <p>GoPkgDoc displays documentation for Go packages on Bitbucket, Github, Launchpad and Google Project Hosting.
         <form class="form-inline">
-          <input type="text" class="span6" id="q" name="q" value="{{.importPath|html}}" placeholder="Package import path"/>
+          <input type="text" class="span6" id="q" name="q" value="{{.q|html}}" placeholder="Package import path"/>
           <button type="submit" class="btn">Go</button>
         </form>
       </div>

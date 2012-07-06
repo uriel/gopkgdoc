@@ -24,6 +24,7 @@ import (
 	"fmt"
 	godoc "go/doc"
 	"net/http"
+	"net/url"
 	"path"
 	"reflect"
 	"regexp"
@@ -52,12 +53,12 @@ func relativePathFmt(importPath string, parentPath interface{}) string {
 	if p, ok := parentPath.(string); ok && p != "" && strings.HasPrefix(importPath, p) {
 		importPath = importPath[len(p)+1:]
 	}
-	return template.HTMLEscapeString(importPath)
+	return urlFmt(importPath)
 }
 
 // importPathFmt formats an import with zero width space characters to allow for breeaks.
 func importPathFmt(importPath string) string {
-	importPath = template.HTMLEscapeString(importPath)
+	importPath = urlFmt(importPath)
 	if len(importPath) > 45 {
 		// Allow long import paths to break following "/"
 		importPath = strings.Replace(importPath, "/", "/&#8203;", -1)
@@ -129,9 +130,9 @@ func declFmt(decl doc.Decl) string {
 		if link {
 			template.HTMLEscape(&buf, t[last:a.Pos])
 			buf.WriteString(`<a href="`)
-			template.HTMLEscape(&buf, []byte(p))
+			buf.WriteString(urlFmt(p))
 			buf.WriteByte('#')
-			template.HTMLEscape(&buf, []byte(a.Name))
+			buf.WriteString(urlFmt(a.Name))
 			buf.WriteString(`">`)
 			template.HTMLEscape(&buf, t[a.Pos:a.End])
 			buf.WriteString(`</a>`)
@@ -161,7 +162,7 @@ func breadcrumbsFmt(pdoc *doc.Package) string {
 	}
 	for j > 0 {
 		buf.WriteString(`<a href="/`)
-		template.HTMLEscape(&buf, importPath[:i+j])
+		buf.WriteString(urlFmt(string(importPath[:i+j])))
 		buf.WriteString(`">`)
 		template.HTMLEscape(&buf, importPath[i:i+j])
 		buf.WriteString(`</a>/`)
@@ -170,6 +171,11 @@ func breadcrumbsFmt(pdoc *doc.Package) string {
 	}
 	template.HTMLEscape(&buf, importPath[i:])
 	return buf.String()
+}
+
+func urlFmt(path string) string {
+	u := url.URL{Path: path}
+	return u.String()
 }
 
 func executeTemplate(w http.ResponseWriter, name string, status int, data interface{}) error {
@@ -205,6 +211,7 @@ func parseTemplates() (*template.Template, error) {
 		"relativePath": relativePathFmt,
 		"relativeTime": relativeTime,
 		"importPath":   importPathFmt,
+		"url":          urlFmt,
 	})
 	return set.ParseGlob("template/*.html")
 }

@@ -27,17 +27,21 @@ var badImportPaths = []string{
 	"foobar",
 	"foo.",
 	".bar",
+	"favicon.ico",
+	"github.com/user/repo/testdata/x",
+	"github.com/user/repo/_ignore/x",
+	"github.com/user/repo/.ignore/x",
 }
 
-func TestIsBadImport(t *testing.T) {
+func TestValidRemotePath(t *testing.T) {
 	for _, importPath := range goodImportPaths {
-		if isBadImportPath(importPath) {
+		if !ValidRemotePath(importPath) {
 			t.Errorf("isBadImportPath(%q) -> true, want false", importPath)
 		}
 	}
 	for _, importPath := range badImportPaths {
-		if !isBadImportPath(importPath) {
-			t.Errorf("isBadImportPath(%q) -> fase, want true", importPath)
+		if ValidRemotePath(importPath) {
+			t.Errorf("isBadImportPath(%q) -> false, want true", importPath)
 		}
 	}
 }

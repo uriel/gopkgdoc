@@ -174,7 +174,7 @@ func Get(client *http.Client, importPath string, etag string) (*Package, error) 
 	if StandardPackages[importPath] {
 		return getStandardDoc(client, importPath, etag)
 	}
-	if isBadImportPath(importPath) {
+	if !ValidRemotePath(importPath) {
 		return nil, ErrPackageNotFound
 	}
 	pdoc, err := getStatic(client, importPath, etag)
@@ -203,64 +203,54 @@ func IsSupportedService(importPath string) bool {
 	return false
 }
 
-var validHost = regexp.MustCompile(`^[-A-Za-z0-9]+(?:\.[-A-Za-z0-9]+)+`)
 var badTLDs = []string{".png", ".html", ".jpg", ".ico", ".txt", ".xml", ".go", ".gif"}
+var validHost = regexp.MustCompile(`^[-A-Za-z0-9]+(?:\.[-A-Za-z0-9]+)+`)
 
-// isBadImport path returns true if the importPath is structurally invalid.
-func isBadImportPath(importPath string) bool {
-
-	firstSlash := -1
+// ValidRemotePath returns true if importPath is structurally valid for "go get".
+func ValidRemotePath(importPath string) bool {
 
 	// See isbadimport in $GOROOT/src/cmd/gc/subr.c for rune checks.
-	for i, r := range importPath {
+	for _, r := range importPath {
 		if r == utf8.RuneError {
-			return true
+			return false
 		}
 		if r < 0x20 || r == 0x7f {
-			return true
+			return false
 		}
 		if r == '\\' {
-			return true
+			return false
 		}
 		if unicode.IsSpace(r) {
-			return true
+			return false
 		}
 		if strings.IndexRune("!\"#$%&'()*,:;<=>?[]^`{|}", r) >= 0 {
-			return true
-		}
-
-		if r == '/' && firstSlash < 0 {
-			firstSlash = i
+			return false
 		}
 	}
 
-	if firstSlash > 255 {
-		return true
+	parts := strings.Split(importPath, "/")
+	if len(parts) == 0 {
+		return false
 	}
 
-	host := importPath
-	if firstSlash > 0 {
-		host = importPath[:firstSlash]
+	if !validHost.MatchString(parts[0]) {
+		return false
 	}
 
 	for _, tld := range badTLDs {
-		if strings.HasSuffix(host, tld) {
-			return true
+		if strings.HasSuffix(parts[0], tld) {
+			return false
 		}
 	}
 
-	if !validHost.MatchString(host) {
-		return true
-	}
-
-	for _, p := range strings.Split(importPath, "/") {
-		if len(p) == 0 {
-			continue
-		}
-		if p[0] == '.' || p[0] == '_' || p == "testdata" {
-			return true
+	for _, part := range parts[1:] {
+		if len(part) == 0 ||
+			part[0] == '.' ||
+			part[0] == '_' ||
+			part == "testdata" {
+			return false
 		}
 	}
 
-	return false
+	return true
 }
