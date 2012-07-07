@@ -63,7 +63,7 @@ func childPackages(c appengine.Context, projectRoot, importPath string) ([]*Pack
 	prefix := importPath + "/"
 	pkgs := projectPkgs[0:0]
 	for _, pkg := range projectPkgs {
-		if strings.HasPrefix(pkg.ImportPath, prefix) && !doc.IsHiddenPath(pkg.ImportPath) {
+		if strings.HasPrefix(pkg.ImportPath, prefix) {
 			pkgs = append(pkgs, pkg)
 		}
 	}
@@ -102,6 +102,7 @@ func getDoc(c appengine.Context, importPath string) (*doc.Package, []*Package, e
 	// datastore and cache as needed.
 
 	pdoc, err = doc.Get(urlfetch.Client(c), importPath, etag)
+	c.Infof("doc.Get(%q, %q) -> %v", importPath, etag, err)
 
 	switch err {
 	case nil:

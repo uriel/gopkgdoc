@@ -36,20 +36,6 @@ import (
 	"unicode/utf8"
 )
 
-// IsHiddenPath returns true if the path contains the segment "testdata" or a
-// segment starting with "." or "_".
-func IsHiddenPath(importPath string) bool {
-	for _, p := range strings.Split(importPath, "/") {
-		if len(p) == 0 {
-			continue
-		}
-		if p[0] == '.' || p[0] == '_' || p == "testdata" {
-			return true
-		}
-	}
-	return false
-}
-
 func startsWithUppercase(s string) bool {
 	r, _ := utf8.DecodeRuneInString(s)
 	return unicode.IsUpper(r)
@@ -513,7 +499,7 @@ func (b *builder) openFile(path string) (io.ReadCloser, error) {
 }
 
 // PackageVersion is modified when previously stored packages are invalid.
-const PackageVersion = "2"
+const PackageVersion = "3"
 
 type Package struct {
 	// The import path for this package.
@@ -537,9 +523,6 @@ type Package struct {
 	// Cache validation tag. This tag is not necessarily an HTTP entity tag.
 	// The tag is "" if there is no meaningful cache validation for the VCS.
 	Etag string
-
-	// Value of PackageVersion when this struct was created.
-	Version string
 
 	// Package name or "" if no package for this import path. The proceeding
 	// fields are set even if a package is not found for the import path.
@@ -583,7 +566,6 @@ func buildDoc(importPath, projectRoot, projectName, projectURL, etag string, lin
 			ProjectURL:  projectURL,
 			Etag:        etag,
 			Updated:     time.Now(),
-			Version:     PackageVersion,
 		},
 	}
 

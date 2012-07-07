@@ -133,8 +133,6 @@ func updatePackage(c appengine.Context, importPath string, pdoc *doc.Package) er
 
 		hide := false
 		switch {
-		case doc.IsHiddenPath(importPath):
-			hide = true
 		case strings.HasPrefix(importPath, "code.google.com/p/go/"):
 			hide = true
 		case pdoc.ProjectRoot == "":

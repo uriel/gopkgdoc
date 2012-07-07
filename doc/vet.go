@@ -73,7 +73,10 @@ func (b *builder) vetPackage() {
 		/*
 			for _, is := range file.Imports {
 				importPath, _ := strconv.Unquote(is.Path.Value)
-				if strings.Index(importPath, ".") < 0 && !StandardPackages[importPath] && importPath != "C" {
+				if !StandardPackages[importPath] &&
+					!ValidRemotePath(importPath) &&
+					importPath != "C" &&
+					!strings.HasPrefix(importPath, "appengine") {
 					errors[fmt.Sprintf("Cannot import %q", importPath)] = is.Pos()
 				}
 			}

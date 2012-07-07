@@ -53,13 +53,13 @@ func getMeta(client *http.Client, importPath string) (projectRoot, projectName, 
 	var resp *http.Response
 
 	proto := "https://"
-	resp, err = client.Get(proto + importPath)
+	resp, err = client.Get(proto + importPath + "?go-get=1")
 	if err != nil || resp.StatusCode != 200 {
 		if err == nil {
 			resp.Body.Close()
 		}
 		proto = "http://"
-		resp, err = client.Get(proto + importPath)
+		resp, err = client.Get(proto + importPath + "?go-get=1")
 		if err != nil {
 			err = GetError{strings.SplitN(importPath, "/", 2)[0], err}
 			return
@@ -170,17 +170,32 @@ func getStatic(client *http.Client, importPath string, etag string) (*Package, e
 	return nil, errNoMatch
 }
 
-func Get(client *http.Client, importPath string, etag string) (*Package, error) {
-	if StandardPackages[importPath] {
-		return getStandardDoc(client, importPath, etag)
+func Get(client *http.Client, importPath string, etag string) (pdoc *Package, err error) {
+
+	const versionPrefix = PackageVersion + "-"
+
+	if strings.HasPrefix(etag, versionPrefix) {
+		etag = etag[len(versionPrefix):]
+	} else {
+		etag = ""
 	}
-	if !ValidRemotePath(importPath) {
+
+	switch {
+	case StandardPackages[importPath]:
+		pdoc, err = getStandardDoc(client, importPath, etag)
+	case !ValidRemotePath(importPath):
 		return nil, ErrPackageNotFound
+	default:
+		pdoc, err = getStatic(client, importPath, etag)
+		if err == errNoMatch {
+			pdoc, err = getDynamic(client, importPath, etag)
+		}
 	}
-	pdoc, err := getStatic(client, importPath, etag)
-	if err == errNoMatch {
-		pdoc, err = getDynamic(client, importPath, etag)
+
+	if err == nil {
+		pdoc.Etag = versionPrefix + pdoc.Etag
 	}
+
 	return pdoc, err
 }
 
@@ -188,20 +203,6 @@ var (
 	ErrPackageNotFound    = errors.New("package not found")
 	ErrPackageNotModified = errors.New("package not modified")
 )
-
-// IsSupportedService returns true if the source code control service for
-// import path is supported by this package.
-func IsSupportedService(importPath string) bool {
-	if StandardPackages[importPath] {
-		return true
-	}
-	for _, s := range services {
-		if strings.HasPrefix(importPath, s.prefix) {
-			return true
-		}
-	}
-	return false
-}
 
 var badTLDs = []string{".png", ".html", ".jpg", ".ico", ".txt", ".xml", ".go", ".gif"}
 var validHost = regexp.MustCompile(`^[-A-Za-z0-9]+(?:\.[-A-Za-z0-9]+)+`)

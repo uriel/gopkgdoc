@@ -119,25 +119,18 @@ func declFmt(decl doc.Decl) string {
 	t := []byte(decl.Text)
 	for _, a := range decl.Annotations {
 		p := a.ImportPath
-		var link bool
-		switch {
-		case p == "":
-			link = true
-		case doc.IsSupportedService(p):
+		if p != "" {
 			p = "/" + p
-			link = true
 		}
-		if link {
-			template.HTMLEscape(&buf, t[last:a.Pos])
-			buf.WriteString(`<a href="`)
-			buf.WriteString(urlFmt(p))
-			buf.WriteByte('#')
-			buf.WriteString(urlFmt(a.Name))
-			buf.WriteString(`">`)
-			template.HTMLEscape(&buf, t[a.Pos:a.End])
-			buf.WriteString(`</a>`)
-			last = a.End
-		}
+		template.HTMLEscape(&buf, t[last:a.Pos])
+		buf.WriteString(`<a href="`)
+		buf.WriteString(urlFmt(p))
+		buf.WriteByte('#')
+		buf.WriteString(urlFmt(a.Name))
+		buf.WriteString(`">`)
+		template.HTMLEscape(&buf, t[a.Pos:a.End])
+		buf.WriteString(`</a>`)
+		last = a.End
 	}
 	template.HTMLEscape(&buf, t[last:])
 	return buf.String()
