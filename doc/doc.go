@@ -52,14 +52,21 @@ func attrValue(attrs []xml.Attr, name string) string {
 func getMeta(client *http.Client, importPath string) (projectRoot, projectName, projectURL, repoRoot string, err error) {
 	var resp *http.Response
 
+	uri := importPath
+	if !strings.Contains(uri, "/") {
+		// Add slash for root of domain.
+		uri = uri + "/"
+	}
+	uri = uri + "?go-get=1"
+
 	proto := "https://"
-	resp, err = client.Get(proto + importPath + "?go-get=1")
+	resp, err = client.Get(proto + uri)
 	if err != nil || resp.StatusCode != 200 {
 		if err == nil {
 			resp.Body.Close()
 		}
 		proto = "http://"
-		resp, err = client.Get(proto + importPath + "?go-get=1")
+		resp, err = client.Get(proto + uri)
 		if err != nil {
 			err = GetError{strings.SplitN(importPath, "/", 2)[0], err}
 			return
