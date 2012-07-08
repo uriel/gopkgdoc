@@ -29,7 +29,7 @@ func (e GetError) Error() string {
 
 // fetchFiles fetches the source files specified by the rawURL field in parallel.
 func fetchFiles(client *http.Client, files []*source, header http.Header) error {
-	ch := make(chan error, len(files))
+	ch := make(chan error)
 	for i := range files {
 		go func(i int) {
 			req, err := http.NewRequest("GET", files[i].rawURL, nil)
@@ -98,6 +98,42 @@ func httpGetBytes(client *http.Client, url string) ([]byte, error) {
 	p, err := ioutil.ReadAll(rc)
 	rc.Close()
 	return p, err
+}
+
+// httpGetBytesNoneMatch conditionally gets the specified resource. If a 304 status
+// is returned, then the function returns ErrPackageNotModified. If a 404
+// status is returned, then the function returns ErrPackageNotFound. 
+func httpGetBytesNoneMatch(client *http.Client, url string, etag string) ([]byte, string, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	req.Header.Set("If-None-Match", `"`+etag+`"`)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, "", GetError{req.URL.Host, err}
+	}
+	defer resp.Body.Close()
+
+	etag = resp.Header.Get("Etag")
+	if len(etag) >= 2 && etag[0] == '"' && etag[len(etag)-1] == '"' {
+		etag = etag[1 : len(etag)-1]
+	} else {
+		etag = ""
+	}
+
+	switch resp.StatusCode {
+	case 200:
+		p, err := ioutil.ReadAll(resp.Body)
+		return p, etag, err
+	case 404:
+		return nil, "", ErrPackageNotFound
+	case 304:
+		return nil, "", ErrPackageNotModified
+	default:
+		return nil, "", GetError{req.URL.Host, fmt.Errorf("get %s -> %d", url, resp.StatusCode)}
+	}
+	panic("unreachable")
 }
 
 // httpGet gets the specified resource. ErrPackageNotFound is returned if the

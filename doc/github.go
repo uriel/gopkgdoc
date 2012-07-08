@@ -39,7 +39,7 @@ func getGithubDoc(client *http.Client, m []string, savedEtag string) (*Package, 
 		dir = dir[1:] + "/"
 	}
 
-	p, etag, err := httpGetBytesCompare(client, "https://api.github.com/repos/"+userRepo+"/git/trees/master?recursive=1", savedEtag)
+	p, etag, err := httpGetBytesNoneMatch(client, "https://api.github.com/repos/"+userRepo+"/git/trees/master?recursive=1", savedEtag)
 	if err != nil {
 		return nil, err
 	}
