@@ -38,6 +38,7 @@ var services = []*service{
 	&service{googlePattern, getGoogleDoc, "code.google.com/"},
 	&service{bitbucketPattern, getBitbucketDoc, "bitbucket.org/"},
 	&service{launchpadPattern, getLaunchpadDoc, "launchpad.net/"},
+	&service{gitoriousPattern, getGitoriousDoc, "git.gitorious.org/"},
 }
 
 func attrValue(attrs []xml.Attr, name string) string {
