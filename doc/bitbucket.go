@@ -30,12 +30,7 @@ func getBitbucketDoc(client *http.Client, m []string, savedEtag string) (*Packag
 	projectName := m[2]
 	projectURL := "https://bitbucket.org/" + m[1] + "/" + m[2] + "/"
 	userRepo := m[1] + "/" + m[2]
-
-	// Normalize dir to "" or string with trailing '/'.
-	dir := m[3]
-	if len(dir) > 0 {
-		dir = dir[1:] + "/"
-	}
+	dir := normalizeDir(m[3])
 
 	// Find the revision tag for tip and fetch the directory listing for that
 	// tag.  Mercurial repositories use the tag "tip". Git repositories use the

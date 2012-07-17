@@ -55,10 +55,7 @@ func getLaunchpadDoc(client *http.Client, m []string, savedEtag string) (*Packag
 	projectURL := "https://launchpad.net/" + projectName + "/"
 
 	repo := m[1]
-	dir := m[5]
-	if len(dir) > 0 {
-		dir = dir[1:] + "/"
-	}
+	dir := normalizeDir(m[5])
 
 	p, etag, err := httpGetBytesCompare(client, "http://bazaar.launchpad.net/+branch/"+repo+"/tarball", savedEtag)
 	if err != nil {

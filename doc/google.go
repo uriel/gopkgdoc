@@ -36,10 +36,8 @@ func getGoogleDoc(client *http.Client, m []string, savedEtag string) (*Package, 
 	if len(subrepo) > 0 {
 		subrepo = subrepo[1:] + "."
 	}
-	dir := m[3]
-	if len(dir) > 0 {
-		dir = dir[1:] + "/"
-	}
+
+	dir := normalizeDir(m[3])
 
 	// Scrape the HTML project page to find the VCS.
 	p, err := httpGetBytes(client, "http://code.google.com/p/"+repo+"/source/checkout")

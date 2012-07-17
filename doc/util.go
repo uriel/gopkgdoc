@@ -11,6 +11,14 @@ import (
 	"strings"
 )
 
+// normalizeDir removes leading slash and adds trailing slash.
+func normalizeDir(s string) string {
+	if len(s) > 0 && s[0] == '/' {
+		s = s[1:] + "/"
+	}
+	return s
+}
+
 // isDocFile returns true if a file with the path p should be included in the
 // documentation.
 func isDocFile(p string) bool {

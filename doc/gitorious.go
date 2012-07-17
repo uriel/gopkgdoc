@@ -34,12 +34,7 @@ func getGitoriousDoc(client *http.Client, m []string, savedEtag string) (*Packag
 	projectRoot := "git.gitorious.org/" + m[1] + "/" + m[2] + ".git"
 	projectName := m[2]
 	projectURL := "https://gitorious.org/" + m[1] + "/" + m[2] + "/"
-
-	// Normalize to "" or string with trailing '/'.
-	dir := m[3]
-	if len(dir) > 0 {
-		dir = dir[1:] + "/"
-	}
+	dir := normalizeDir(m[3])
 
 	p, etag, err := httpGetBytesCompare(client, "https://gitorious.org/"+m[1]+"/"+m[2]+"/archive-tarball/master", savedEtag)
 	if err != nil {

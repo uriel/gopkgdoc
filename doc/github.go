@@ -30,16 +30,45 @@ func getGithubDoc(client *http.Client, m []string, savedEtag string) (*Package, 
 	projectRoot := "github.com/" + m[1] + "/" + m[2]
 	projectName := m[2]
 	projectURL := "https://github.com/" + m[1] + "/" + m[2] + "/"
-
 	userRepo := m[1] + "/" + m[2]
+	dir := normalizeDir(m[3])
 
-	// Normalize to "" or string with trailing '/'.
-	dir := m[3]
-	if len(dir) > 0 {
-		dir = dir[1:] + "/"
+	p, err := httpGetBytes(client, "https://api.github.com/repos/"+userRepo+"/git/refs")
+	if err != nil {
+		return nil, err
 	}
 
-	p, etag, err := httpGetBytesNoneMatch(client, "https://api.github.com/repos/"+userRepo+"/git/trees/master?recursive=1", savedEtag)
+	var refs []*struct {
+		Object struct {
+			Type string
+			Sha  string
+			Url  string
+		}
+		Ref string
+		Url string
+	}
+
+	if err := json.Unmarshal(p, &refs); err != nil {
+		return nil, err
+	}
+
+	etag := ""
+	treeName := "master"
+	for _, ref := range refs {
+		if ref.Ref == "refs/heads/go1" || ref.Ref == "refs/tags/go1" {
+			treeName = "go1"
+			etag = ref.Object.Sha + ref.Ref[len("refs"):]
+			break
+		} else if ref.Ref == "refs/heads/master" {
+			etag = ref.Object.Sha
+		}
+	}
+
+	if etag == savedEtag {
+		return nil, ErrPackageNotModified
+	}
+
+	p, err = httpGetBytes(client, "https://api.github.com/repos/"+userRepo+"/git/trees/"+treeName+"?recursive=1")
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +96,7 @@ func getGithubDoc(client *http.Client, m []string, savedEtag string) (*Package, 
 		if d, f := path.Split(node.Path); d == dir {
 			files = append(files, &source{
 				name:      f,
-				browseURL: "https://github.com/" + userRepo + "/blob/master/" + node.Path,
+				browseURL: "https://github.com/" + userRepo + "/blob/" + treeName + "/" + node.Path,
 				rawURL:    node.Url,
 			})
 		}
