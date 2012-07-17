@@ -22,11 +22,16 @@ package main
 import (
 	"fmt"
 	"github.com/garyburd/gopkgdoc/doc"
-	"github.com/kr/pretty"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 )
+
+func indent(s string, n int) string {
+	const space = "                       "
+	return strings.Replace(strings.TrimSpace(s), "\n", "\n"+space[:n], -1)
+}
 
 func main() {
 	if len(os.Args) != 2 {
@@ -36,5 +41,66 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("%# v", pretty.Formatter(dpkg))
+	fmt.Println("ImportPath:  ", dpkg.ImportPath)
+	fmt.Println("ProjectRoot: ", dpkg.ProjectRoot)
+	fmt.Println("ProjectName: ", dpkg.ProjectName)
+	fmt.Println("ProjectURL:  ", dpkg.ProjectURL)
+	fmt.Println("Updated:     ", dpkg.Updated)
+	fmt.Println("Etag:        ", dpkg.Etag)
+	fmt.Println("Name:        ", dpkg.Name)
+	fmt.Println("IsCmd:       ", dpkg.IsCmd)
+	fmt.Println("Synopsis:    ", dpkg.Synopsis)
+	fmt.Println("Doc:         ", indent(dpkg.Doc, 14))
+	fmt.Println("Errors:")
+	for _, s := range dpkg.Errors {
+		fmt.Println("    ", s)
+	}
+	fmt.Println("Files:")
+	for _, f := range dpkg.Files {
+		fmt.Println("    ", f)
+	}
+	fmt.Println("Imports:")
+	for _, i := range dpkg.Imports {
+		fmt.Println("    ", i)
+	}
+	fmt.Println("TestImports:")
+	for _, i := range dpkg.TestImports {
+		fmt.Println("    ", i)
+	}
+	for _, c := range dpkg.Consts {
+		fmt.Println("Const:")
+		fmt.Println("    Decl:  ", indent(c.Decl.Text, 12))
+		fmt.Println("    Doc:   ", indent(c.Doc, 12))
+		fmt.Println("    URL:   ", c.URL)
+	}
+	for _, c := range dpkg.Vars {
+		fmt.Println("Var:")
+		fmt.Println("    Decl:  ", indent(c.Decl.Text, 12))
+		fmt.Println("    Doc:   ", indent(c.Doc, 12))
+		fmt.Println("    URL:   ", c.URL)
+	}
+	for _, f := range dpkg.Funcs {
+		fmt.Println("Func:")
+		fmt.Println("    Decl:  ", indent(f.Decl.Text, 12))
+		fmt.Println("    Doc:   ", indent(f.Doc, 12))
+		fmt.Println("    URL:   ", f.URL)
+	}
+	for _, t := range dpkg.Types {
+		fmt.Println("Type:")
+		fmt.Println("    Decl:  ", indent(t.Decl.Text, 12))
+		fmt.Println("    Doc:   ", indent(t.Doc, 12))
+		fmt.Println("    URL:   ", t.URL)
+		for _, f := range t.Funcs {
+			fmt.Println("    Func:")
+			fmt.Println("        Decl:  ", indent(f.Decl.Text, 16))
+			fmt.Println("        Doc:   ", indent(f.Doc, 16))
+			fmt.Println("        URL:   ", f.URL)
+		}
+		for _, m := range t.Methods {
+			fmt.Println("    Method:")
+			fmt.Println("        Decl:  ", indent(m.Decl.Text, 16))
+			fmt.Println("        Doc:   ", indent(m.Doc, 16))
+			fmt.Println("        URL:   ", m.URL)
+		}
+	}
 }

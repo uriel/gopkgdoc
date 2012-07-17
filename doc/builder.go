@@ -630,7 +630,6 @@ func buildDoc(importPath, projectRoot, projectName, projectURL, etag string, lin
 
 	b.vetPackage()
 
-	ast.PackageExports(b.ast)
 	pdoc := doc.New(b.ast, b.pkg.ImportPath, 0)
 
 	b.pkg.Name = pdoc.Name
