@@ -142,6 +142,9 @@ func (b *builder) fileImportPaths(filename string) map[string]string {
 
 	for _, i := range file.Imports {
 		importPath, _ := strconv.Unquote(i.Path.Value)
+		if importPath == "C" {
+			continue
+		}
 		if i.Name != nil {
 			importPaths[i.Name.Name] = importPath
 			scores[i.Name.Name] = 4
@@ -244,14 +247,14 @@ func (v *annotationVisitor) Visit(n ast.Node) ast.Visitor {
 		if !ast.IsExported(n.Name) {
 			return nil
 		}
-		v.addAnnoation(n, "", n.Name)
+		v.addAnnotation(n, "", n.Name)
 		return nil
 	case *ast.SelectorExpr:
 		if !ast.IsExported(n.Sel.Name) {
 			return nil
 		}
 		if i, ok := n.X.(*ast.Ident); ok {
-			v.addAnnoation(n, i.Name, n.Sel.Name)
+			v.addAnnotation(n, i.Name, n.Sel.Name)
 			return nil
 		}
 	}
@@ -260,7 +263,7 @@ func (v *annotationVisitor) Visit(n ast.Node) ast.Visitor {
 
 const packageWrapper = "package p\n"
 
-func (v *annotationVisitor) addAnnoation(n ast.Node, packageName string, name string) {
+func (v *annotationVisitor) addAnnotation(n ast.Node, packageName string, name string) {
 	pos := v.fset.Position(n.Pos())
 	end := v.fset.Position(n.End())
 	importPath := ""
