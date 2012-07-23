@@ -1,0 +1,43 @@
+{{define "results.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  {{template "CommonHead"}}
+  <title>{{.Q|html}} - GoPkgDoc</title>
+</head>
+
+<body>
+
+{{template "NavBar" "home"}}
+
+<div class="container spacey">
+
+  {{template "Query" .Q}}
+
+  {{if or $.Pkgs $.Cmds}}
+
+    {{with .Pkgs}}
+      <h3 id="packages">Packages</h3>
+      <table class="table table-condensed">
+      <thead><tr><th>Path</th><th>Synopsis</th></tr></thead>
+      <tbody>{{range .}}<tr><td><a href="/{{.ImportPath|html}}">{{.ImportPath|importPath}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
+      </table>
+    {{end}}
+
+    {{with .Cmds}}
+      <h3 id="commands">Commands</h3>
+      <table class="table table-condensed">
+      <thead><tr><th>Path</th><th>Synopsis</th></tr></thead>
+      <tbody>{{range .}}<tr><td><a href="/{{.ImportPath|html}}">{{.ImportPath|importPath}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
+      </table>
+    {{end}}
+
+  {{else}}
+    Not found
+  {{end}}
+
+</div>
+
+</body>
+</html>
+{{end}}

@@ -3,6 +3,13 @@
 <link href="/-/static/css/bootstrap.css?v=8" rel="stylesheet">
 {{end}}
 
+{{define "Query"}}
+<form class="form-inline">
+  <input type="text" class="span6" id="q" name="q" value="{{.|html}}" placeholder="Package import path"/>
+  <button type="submit" class="btn">Go</button>
+</form>
+{{end}}
+
 {{define "NavBar"}}
 <div class="navbar">
   <div class="navbar-inner">

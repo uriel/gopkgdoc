@@ -20,7 +20,7 @@
 
   <h2></h2>
 
-  {{with .pkgs}}
+  {{with .Pkgs}}
     <table class="table table-condensed">
     <thead><tr><th>Path</th><th>Synopsis</th></tr></thead>
     <tbody>{{range .}}<tr><td><a href="/{{.ImportPath|html}}">{{.ImportPath|importPath}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>

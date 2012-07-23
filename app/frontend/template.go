@@ -14,14 +14,14 @@
 
 // +build appengine
 
-package app
+package frontend
 
 import (
 	"appengine"
 	"bytes"
-	"doc"
 	"errors"
 	"fmt"
+	"github.com/garyburd/gopkgdoc/doc"
 	godoc "go/doc"
 	"net/http"
 	"net/url"

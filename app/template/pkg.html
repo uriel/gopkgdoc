@@ -1,4 +1,4 @@
-{{define "pkg.html"}}{{with .pdoc}}
+{{define "pkg.html"}}{{with .Dpkg}}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -69,7 +69,7 @@
       {{range .Methods}}<li><a href="#{{$t.Name|html}}.{{.Name|html}}" title="{{.Decl.Text|html}}">func ({{.Recv|html}}) {{.Name|html}}</a>{{template "ExampleLinks" .}}{{end}}
     {{if or .Funcs .Methods}}</ul>{{end}}
 {{end}}
-{{if or $.pkgs $.cmds}}<li><a href="#subdirs">Subdirectories</a>{{end}}
+{{if or $.Pkgs $.Cmds}}<li><a href="#subdirs">Subdirectories</a>{{end}}
 </ul>
 </div>
 
@@ -103,19 +103,19 @@
 {{end}}{{/* if .Name */}}
 {{end}}{{/* if .IsCmd */}}
 
-{{if or $.pkgs $.cmds}}{{if .Name}}<h3 id="subdirs">Subdirectories</h3>{{end}}
-  {{with $.pkgs}}
+{{if or $.Pkgs $.Cmds}}{{if .Name}}<h3 id="subdirs">Subdirectories</h3>{{end}}
+  {{with $.Pkgs}}
     <h4>Packages</h4>
     <table class="table table-condensed">
     <thead><tr><th>Path</th><th>Synopsis</th></tr></thead>
-    <tbody>{{range .}}<tr><td><a href="/{{.ImportPath|html}}">{{relativePath .ImportPath $.pdoc.ImportPath}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
+    <tbody>{{range .}}<tr><td><a href="/{{.ImportPath|html}}">{{relativePath .ImportPath $.Dpkg.ImportPath}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
     </table>
   {{end}}
-  {{with $.cmds}}
+  {{with $.Cmds}}
     <h4>Commands</h4>
     <table class="table table-condensed">
     <thead><tr><th>Path</th><th>Synopsis</th></tr></thead>
-    <tbody>{{range .}}<tr><td><a href="/{{.ImportPath|html}}">{{relativePath .ImportPath $.pdoc.ImportPath}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
+    <tbody>{{range .}}<tr><td><a href="/{{.ImportPath|html}}">{{relativePath .ImportPath $.Dpkg.ImportPath}}</a><td>{{.Synopsis|html}}</td></tr>{{end}}</tbody>
     </table>
   {{end}}
 {{end}}
@@ -123,9 +123,11 @@
 <div class="page-footer">
   <p class="pull-right"><a href="#">Back to top</a></p>
   <form name="refresh" method="POST" action="/-/refresh" class="form-inline">
-    <p>GoPkgDoc generated this page from the <a href="{{.ProjectURL|html}}">{{.ProjectName|html}} source code</a> {{.Updated|relativeTime}}. 
-    <a href="javascript:document.refresh.submit();" title="Refresh this page from the source">⟲</a>
-    <input type="hidden" name="importPath" value="{{.ImportPath|html}}">
+    {{if not .Updated.IsZero}}
+      <p>GoPkgDoc generated this page from the <a href="{{.ProjectURL|html}}">{{.ProjectName|html}} source code</a> {{.Updated|relativeTime}}. 
+      <a href="javascript:document.refresh.submit();" title="Refresh this page from the source">⟲</a>
+      <input type="hidden" name="importPath" value="{{.ImportPath|html}}">
+    {{end}}
   </form>
 </div>
 
