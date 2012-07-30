@@ -85,6 +85,7 @@ var testPkgs = []*doc.Package{
 		Synopsis:    "Package strconv implements conversions to and from string representations of basic data types.",
 		Doc:         "Package strconv implements conversions to and from string representations\nof basic data types.",
 		Imports:     []string{"errors", "math", "unicode/utf8"},
+		Funcs:       []*doc.Func{{}},
 	},
 	{
 		ImportPath:  "github.com/garyburd/go-oauth/oauth",
@@ -119,6 +120,7 @@ var testPkgs = []*doc.Package{
 			"time",
 		},
 		TestImports: []string{"bytes", "net/url", "testing"},
+		Funcs:       []*doc.Func{{}},
 	},
 	{
 		// empty directory
@@ -132,12 +134,20 @@ var testPkgs = []*doc.Package{
 		ProjectRoot: "example.com",
 		ProjectName: "example",
 		Name:        "a",
+		Funcs:       []*doc.Func{{}},
 	},
 	{
 		ImportPath:  "example.com/src/b",
 		ProjectRoot: "example.com",
 		ProjectName: "example",
 		Name:        "b",
+		Funcs:       []*doc.Func{{}},
+	},
+	{
+		ImportPath:  "github.com/example/noexports",
+		ProjectRoot: "github.com/exmaple/noexports",
+		ProjectName: "noexports",
+		Name:        "noexports",
 	},
 }
 
@@ -150,6 +160,7 @@ var testQueries = []struct {
 	{"project:github.com/garyburd/go-oauth", []string{"github.com/garyburd/go-oauth/oauth"}},
 	{"import:bytes", []string{"github.com/garyburd/go-oauth/oauth"}},
 	{"oauth", []string{"github.com/garyburd/go-oauth/oauth"}},
+	{"all:", []string{"example.com/src/a", "example.com/src/b", "github.com/example/noexports", "github.com/garyburd/go-oauth/oauth", "strconv"}},
 }
 
 var testChildren = []struct {
@@ -177,11 +188,11 @@ func TestIndex(t *testing.T) {
 	for _, pkg := range testPkgs {
 		actualPkg, err := idx.Get(pkg.ImportPath)
 		if err != nil {
-			t.Errorf("idx.Get(%s) -> %v", pkg.ImportPath, err)
+			t.Errorf("idx.Get(%q) -> %v", pkg.ImportPath, err)
 			continue
 		}
 		if !reflect.DeepEqual(pkg, actualPkg) {
-			t.Errorf("idx.Get(%s) = %+v, want %+v", pkg.ImportPath, actualPkg, pkg)
+			t.Errorf("idx.Get(%q) = %+v, want %+v", pkg.ImportPath, actualPkg, pkg)
 		}
 	}
 
@@ -190,7 +201,7 @@ func TestIndex(t *testing.T) {
 	for _, tt := range testQueries {
 		results, err := idx.Query(tt.q, SortByPath)
 		if err != nil {
-			t.Errorf("idx.Query(%s) -> %v", tt.q, err)
+			t.Errorf("idx.Query(%q) -> %v", tt.q, err)
 			continue
 		}
 		actual := make([]string, len(results))
@@ -198,7 +209,7 @@ func TestIndex(t *testing.T) {
 			actual[i] = result.ImportPath
 		}
 		if !reflect.DeepEqual(actual, tt.expected) {
-			t.Errorf("idx.Query(%s) = %+v, want %+v", tt.q, actual, tt.expected)
+			t.Errorf("idx.Query(%q) = %#v, want %#v", tt.q, actual, tt.expected)
 		}
 	}
 

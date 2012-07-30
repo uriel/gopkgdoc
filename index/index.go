@@ -103,8 +103,7 @@ const termSize = md5.Size
 
 // term is a zero padded string or the md5 hash of (salt + string) if the
 // string length is greater than the size of an md5 hash. The salt protects
-// against a package author intentially creating a collision between a padded
-// string and a hash.
+// against intentional collisions by evil package authors.
 type term [termSize]byte
 
 var termSalt = readSalt()
@@ -132,13 +131,33 @@ func makeTerm(s string) (t term) {
 }
 
 func addPackageTerms(terms map[term]int, mask int, dpkg *doc.Package) {
-	for _, importPath := range dpkg.Imports {
-		term := makeTerm("import:" + importPath)
-		terms[term] = terms[term] | mask
+	if dpkg.Name == "" {
+		// No terms for empty directories.
+		return
 	}
 
 	term := makeTerm("project:" + dpkg.ProjectRoot)
 	terms[term] = terms[term] | mask
+
+	switch dpkg.IsCmd {
+	case true:
+		i := strings.Index(dpkg.Doc, ".")
+		if dpkg.Synopsis == "" || i <= len(dpkg.Doc)-1 {
+			// Synopsis and more than one sentence of documetnation required
+			// for commands.
+			return
+		}
+	case false:
+		if len(dpkg.Consts) == 0 && len(dpkg.Vars) == 0 && len(dpkg.Funcs) == 0 && len(dpkg.Types) == 0 {
+			// At least one export required for packages.
+			return
+		}
+	}
+
+	for _, importPath := range dpkg.Imports {
+		term = makeTerm("import:" + importPath)
+		terms[term] = terms[term] | mask
+	}
 
 	term = makeTerm(dpkg.Name)
 	terms[term] = terms[term] | mask
@@ -268,7 +287,7 @@ func (idx *Index) Remove(importPath string) {
 func (idx *Index) results(ids identifierSet) []Result {
 	results := make([]Result, 0, len(ids))
 	for _, id := range ids {
-		if pkg := idx.pkgs[id]; pkg != nil && pkg.dpkg.Name != "" {
+		if pkg := idx.pkgs[id]; pkg != nil {
 			results = append(results, pkg.result)
 		}
 	}
